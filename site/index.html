@@ -321,53 +321,45 @@
     const nodeIds   = ['pn0','pn1','pn2','pn3','pn4'];
     // segment 0: plain, 1: enc, 2: enc, 3: plain
     const encSeg    = [false,true,true,false];
-    const LOOP      = 1600;   // ms per full loop
-    const PAUSE     = 0;      // no stops
-    const WHITE     = ['#f0f0f0', '0 0 10px 3px rgba(240,240,240,.65)'];
-    const GREEN     = ['#00ffaa', '0 0 12px 4px rgba(0,255,170,.7)'];
+    const LOOP = 2500; // ms per full traversal
+    const WHITE = ['#f0f0f0', '0 0 10px 3px rgba(240,240,240,.65)'];
+    const GREEN = ['#00ffaa', '0 0 12px 4px rgba(0,255,170,.7)'];
 
-    // Timeline: alternating travel/pause events
-    const SEG_T = (LOOP - PAUSE * 3) / 4;
-    const tl = [];
-    let cur = 0;
-    for (let s = 0; s < 4; s++) {
-      tl.push({ travel:true, s, t0:cur, t1:cur+SEG_T });
-      cur += SEG_T;
-      if (s < 3) { tl.push({ travel:false, ni:s+1, t0:cur, t1:cur+PAUSE }); cur += PAUSE; }
-    }
-
-    function eio(t) { return t<.5 ? 2*t*t : -1+(4-2*t)*t; }
-    function lerp(a,b,t) { return a+(b-a)*t; }
     function cx(id) {
       const pr = pipeline.getBoundingClientRect();
       const nr = document.getElementById(id).getBoundingClientRect();
       return (nr.left + nr.width/2) - pr.left;
     }
-    function clearLit() { nodeIds.forEach(id => document.getElementById(id).classList.remove('lit-plain','lit-enc')); }
-    function light(id, enc) { document.getElementById(id).classList.add(enc ? 'lit-enc' : 'lit-plain'); }
 
-    let t0 = null, prevSeg = -1;
+    // Smooth continuous animation — no stops, no easing breaks
+    let t0 = null;
     function frame(ts) {
       if (!t0) t0 = ts;
-      const e = (ts - t0) % LOOP;
-      const ev = tl.find(x => e >= x.t0 && e < x.t1);
-      if (!ev) { requestAnimationFrame(frame); return; }
+      const progress = ((ts - t0) % LOOP) / LOOP; // 0 to 1, linear
 
-      let x, enc;
-      if (ev.travel) {
-        const t = eio(Math.min(1, (e - ev.t0) / (ev.t1 - ev.t0)));
-        x   = lerp(cx(nodeIds[ev.s]), cx(nodeIds[ev.s+1]), t);
-        enc = encSeg[ev.s];
-        if (prevSeg !== ev.s) { prevSeg = ev.s; clearLit(); light(nodeIds[ev.s], enc); }
-      } else {
-        x   = cx(nodeIds[ev.ni]);
-        enc = encSeg[ev.ni - 1];
-        clearLit(); light(nodeIds[ev.ni], enc); prevSeg = -1;
+      // Get all node positions
+      const positions = nodeIds.map(id => cx(id));
+      const totalDist = positions[4] - positions[0];
+
+      // Current x = linear interpolation across full width
+      const x = positions[0] + totalDist * progress;
+
+      // Determine if we're in the encrypted zone (between Claude nodes)
+      const enc = x > positions[1] && x < positions[3];
+
+      dot.style.left = x + 'px';
+      dot.style.background = enc ? GREEN[0] : WHITE[0];
+      dot.style.boxShadow = enc ? GREEN[1] : WHITE[1];
+
+      // Light up nearest node
+      nodeIds.forEach(id => document.getElementById(id).classList.remove('lit-plain','lit-enc'));
+      let nearest = 0, minDist = Infinity;
+      positions.forEach((px, i) => { const d = Math.abs(x - px); if (d < minDist) { minDist = d; nearest = i; } });
+      if (minDist < 40) {
+        const cls = enc ? 'lit-enc' : 'lit-plain';
+        document.getElementById(nodeIds[nearest]).classList.add(cls);
       }
 
-      dot.style.left       = x + 'px';
-      dot.style.background = enc ? GREEN[0] : WHITE[0];
-      dot.style.boxShadow  = enc ? GREEN[1] : WHITE[1];
       requestAnimationFrame(frame);
     }
     setTimeout(() => requestAnimationFrame(frame), 300);
