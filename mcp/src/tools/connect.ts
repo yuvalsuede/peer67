@@ -4,6 +4,8 @@ import {
   deriveSharedSecret,
   deriveMailboxIds,
   deriveEncryptKey,
+  encrypt,
+  decrypt,
 } from "../crypto.js";
 import { encodeConnectionCode, decodeConnectionCode } from "../codec.js";
 import { LocalStore, ConnectionData } from "../store.js";
@@ -15,7 +17,7 @@ export async function connectCreate(
   relayUrl?: string
 ): Promise<{ code: string; message: string }> {
   const config = await store.getConfig();
-  const relay = relayUrl ?? config.default_relay;
+  const relay = relayUrl ?? process.env.PEER67_RELAY ?? config.default_relay;
 
   const keypair = generateKeypair();
   const code = encodeConnectionCode(keypair.publicKey, relay);
@@ -123,4 +125,142 @@ export async function connectComplete(store: LocalStore): Promise<string | null>
   await store.clearPending();
 
   return pending.name;
+}
+
+export async function connectAutoInitiate(
+  store: LocalStore,
+  theirHandle: string,
+  theirIdentityPubB64: string,
+  relayUrl?: string
+): Promise<void> {
+  const config = await store.getConfig();
+  const relay_url = relayUrl ?? process.env.PEER67_RELAY ?? config.default_relay;
+
+  const data = await store.load();
+  const fromHandle = data.identity.name;
+  const ourIdentityPubHex = data.identity.identity_key_public;
+  if (!ourIdentityPubHex) {
+    throw new Error("No identity key found. Run init first.");
+  }
+
+  // 1. Decode their identity public key from base64
+  const theirIdentityPub = Buffer.from(theirIdentityPubB64, "base64");
+
+  // 2. Generate ephemeral keypair
+  const ephKeypair = generateKeypair();
+
+  // 3. Encode connection code using ephemeral public key + relay URL
+  const code = encodeConnectionCode(ephKeypair.publicKey, relay_url);
+
+  // 4. Derive transport key: X25519(eph_private, their_identity_pub)
+  const transportShared = deriveSharedSecret(ephKeypair.privateKey, theirIdentityPub);
+  const transportKey = deriveEncryptKey(transportShared);
+
+  // 5. Compute their connect-inbox mailbox
+  const connectInbox = createHash("sha256")
+    .update("peer67-connect-inbox:" + Buffer.from(theirIdentityPub).toString("hex"))
+    .digest("hex");
+
+  // 6. Build payload JSON
+  const payload = JSON.stringify({
+    type: "connect_request",
+    from_handle: fromHandle,
+    from_pub: ourIdentityPubHex,
+    code,
+  });
+
+  // 7. Encrypt payload with transportKey, using connect-inbox mailbox as AAD
+  const encrypted = encrypt(transportKey, payload, connectInbox);
+
+  // 8. Wire format blob: base64(eph_pub) + "|" + encrypted
+  const ephPubB64 = Buffer.from(ephKeypair.publicKey).toString("base64");
+  const blob = ephPubB64 + "|" + encrypted;
+
+  // 9. PUT blob to connect-inbox on relay
+  const relay = new RelayClient(relay_url);
+  await relay.put(connectInbox, blob);
+
+  // 10. Store pending connection locally (same as connectCreate)
+  await store.setPending({
+    name: theirHandle,
+    connection_code: code,
+    private_key: Buffer.from(ephKeypair.privateKey).toString("hex"),
+    public_key: Buffer.from(ephKeypair.publicKey).toString("hex"),
+    created_at: new Date().toISOString(),
+  });
+}
+
+export async function checkConnectInbox(store: LocalStore): Promise<string | null> {
+  // 1. Load store, get our identity keypair
+  const data = await store.load();
+  const ourIdentityPrivHex = data.identity.identity_key_private;
+  const ourIdentityPubHex = data.identity.identity_key_public;
+
+  if (!ourIdentityPrivHex || !ourIdentityPubHex) {
+    return null;
+  }
+
+  const ourIdentityPriv = Buffer.from(ourIdentityPrivHex, "hex");
+  const ourIdentityPub = Buffer.from(ourIdentityPubHex, "hex");
+
+  // 2. Compute our connect-inbox mailbox
+  const connectInbox = createHash("sha256")
+    .update("peer67-connect-inbox:" + ourIdentityPub.toString("hex"))
+    .digest("hex");
+
+  const config = await store.getConfig();
+  const relay_url = process.env.PEER67_RELAY ?? config.default_relay;
+  const relay = new RelayClient(relay_url);
+
+  // 3. GET blobs from relay at connect-inbox
+  const blobs = await relay.get(connectInbox);
+
+  // 4. For each blob, attempt to decrypt and process
+  for (const relayBlob of blobs) {
+    try {
+      // a. Split on "|" to get eph_pub_b64 and encrypted part
+      const pipeIndex = relayBlob.blob.indexOf("|");
+      if (pipeIndex === -1) {
+        continue;
+      }
+      const ephPubB64 = relayBlob.blob.slice(0, pipeIndex);
+      const encryptedPart = relayBlob.blob.slice(pipeIndex + 1);
+
+      // b. Decode eph_pub from base64
+      const ephPub = Buffer.from(ephPubB64, "base64");
+
+      // c. Derive transport key: X25519(our_identity_private, eph_pub)
+      const transportShared = deriveSharedSecret(ourIdentityPriv, ephPub);
+      const transportKey = deriveEncryptKey(transportShared);
+
+      // d. Decrypt using transportKey with connect-inbox as AAD
+      const plaintext = decrypt(transportKey, encryptedPart, connectInbox);
+
+      // e. Parse JSON payload, verify type === "connect_request"
+      const parsed = JSON.parse(plaintext) as {
+        type: string;
+        from_handle: string;
+        from_pub: string;
+        code: string;
+      };
+
+      if (parsed.type !== "connect_request") {
+        continue;
+      }
+
+      // f. Call connectAccept to complete the connection
+      await connectAccept(store, parsed.from_handle, parsed.code);
+
+      // g. DELETE the blob from connect-inbox
+      await relay.del(connectInbox, relayBlob.id);
+
+      // h. Return from_handle
+      return parsed.from_handle;
+    } catch {
+      // Silently skip blobs that fail decryption (could be garbage)
+      continue;
+    }
+  }
+
+  return null;
 }
