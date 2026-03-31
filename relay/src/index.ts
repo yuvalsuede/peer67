@@ -3,12 +3,15 @@ import type { Redis } from "ioredis";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { BlobStore } from "./store.js";
+import { RegistryStore } from "./registry.js";
+import { registerRegistryRoutes } from "./registry-routes.js";
 import { isValidMailboxId } from "./middleware.js";
 
 interface BuildAppOptions {
   redisUrl?: string;
   redis?: Redis;
   store?: BlobStore;
+  registry?: RegistryStore;
 }
 
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -27,8 +30,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   // Build store — accept pre-built store, pre-built redis, or create from URL
   let store: BlobStore;
-  if (opts.store !== undefined) {
+  let registryStore: RegistryStore;
+
+  if (opts.store !== undefined && opts.registry !== undefined) {
     store = opts.store;
+    registryStore = opts.registry;
   } else {
     let redis: Redis;
     if (opts.redis !== undefined) {
@@ -40,8 +46,12 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       const { default: Redis } = await import("ioredis");
       redis = new Redis(opts.redisUrl ?? process.env.REDIS_URL ?? "redis://localhost:6379");
     }
-    store = new BlobStore(redis);
+    store = opts.store ?? new BlobStore(redis);
+    registryStore = opts.registry ?? new RegistryStore(redis);
   }
+
+  const relayUrl = process.env.RELAY_URL ?? "http://localhost:3967";
+  await registerRegistryRoutes(app, registryStore, relayUrl);
 
   // PUT /d/:mailboxId — store a blob
   app.put<{
@@ -117,7 +127,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
 const isMain = process.argv[1]?.endsWith("index.ts") || process.argv[1]?.endsWith("index.js");
 if (isMain) {
   const port = Number(process.env.PORT ?? 3967);
-  buildApp({ redisUrl: process.env.REDIS_URL }).then((app) => {
+  const useMock = process.argv.includes("--mock") || process.env.REDIS_URL === "mock";
+  const redisUrl = useMock ? "redis://mock" : process.env.REDIS_URL;
+  buildApp({ redisUrl }).then((app) => {
     app.listen({ port, host: "0.0.0.0" }, (err, address) => {
       if (err) {
         process.stderr.write(`Error: ${err.message}\n`);
