@@ -169,4 +169,107 @@ describe("LocalStore", () => {
       expect(typeof config.poll_interval_seconds).toBe("number");
     });
   });
+
+  describe("identity keypair", () => {
+    it("generates keypair and device_id on init", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      const data = await store.load();
+      expect(data.identity.identity_key_private).toBeDefined();
+      expect(data.identity.identity_key_public).toBeDefined();
+      expect(data.identity.device_id).toBeDefined();
+      expect(typeof data.identity.identity_key_private).toBe("string");
+      expect(typeof data.identity.identity_key_public).toBe("string");
+      expect(typeof data.identity.device_id).toBe("string");
+      // hex strings should be non-empty
+      expect(data.identity.identity_key_private!.length).toBeGreaterThan(0);
+      expect(data.identity.identity_key_public!.length).toBeGreaterThan(0);
+      expect(data.identity.device_id!.length).toBeGreaterThan(0);
+    });
+
+    it("updateIdentity sets email", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      await store.updateIdentity({ email: "alice@example.com" });
+
+      const data = await store.load();
+      expect(data.identity.email).toBe("alice@example.com");
+      // existing fields not wiped
+      expect(data.identity.name).toBe("alice");
+      expect(data.identity.identity_key_public).toBeDefined();
+    });
+
+    it("updateIdentity merges without overwriting unrelated fields", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      await store.updateIdentity({ email: "alice@example.com" });
+      await store.updateIdentity({ registered_at: "2024-01-01T00:00:00Z" });
+
+      const data = await store.load();
+      expect(data.identity.email).toBe("alice@example.com");
+      expect(data.identity.registered_at).toBe("2024-01-01T00:00:00Z");
+    });
+  });
+
+  describe("pending invites", () => {
+    const sampleInvite = {
+      email: "bob@example.com",
+      email_hash: "abc123",
+      created_at: "2024-01-01T00:00:00Z",
+    };
+
+    it("addPendingInvite adds to list", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      await store.addPendingInvite(sampleInvite);
+
+      const data = await store.load();
+      expect(data.pending_invites).toHaveLength(1);
+      expect(data.pending_invites![0]).toEqual(sampleInvite);
+    });
+
+    it("addPendingInvite appends to existing list", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      await store.addPendingInvite(sampleInvite);
+      await store.addPendingInvite({
+        email: "carol@example.com",
+        email_hash: "def456",
+        created_at: "2024-01-02T00:00:00Z",
+      });
+
+      const data = await store.load();
+      expect(data.pending_invites).toHaveLength(2);
+    });
+
+    it("removePendingInvite removes by email_hash", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      await store.addPendingInvite(sampleInvite);
+      await store.addPendingInvite({
+        email: "carol@example.com",
+        email_hash: "def456",
+        created_at: "2024-01-02T00:00:00Z",
+      });
+
+      await store.removePendingInvite("abc123");
+
+      const data = await store.load();
+      expect(data.pending_invites).toHaveLength(1);
+      expect(data.pending_invites![0].email_hash).toBe("def456");
+    });
+
+    it("removePendingInvite does not throw for non-existent hash", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.init("alice");
+
+      await expect(store.removePendingInvite("nonexistent")).resolves.not.toThrow();
+    });
+  });
 });

@@ -19,6 +19,7 @@ export interface ConnectionData {
   mailbox_recv: string; // hex
   shared_key: string;   // hex
   relay_url: string;
+  email?: string;
   created_at?: string;
   last_seen?: string;
 }
@@ -33,9 +34,18 @@ export interface PendingConnection {
 
 export interface StoreData {
   version: number;
-  identity: { name: string; created_at: string };
+  identity: {
+    name: string;
+    created_at: string;
+    email?: string;
+    identity_key_private?: string; // hex
+    identity_key_public?: string;  // hex
+    device_id?: string;            // hex
+    registered_at?: string;
+  };
   connections: Record<string, ConnectionData>;
   pending?: PendingConnection;
+  pending_invites?: Array<{ email: string; email_hash: string; created_at: string }>;
 }
 
 interface Config {
@@ -44,7 +54,7 @@ interface Config {
 }
 
 const STORE_VERSION = 1;
-const DEFAULT_RELAY = "https://relay.peer67.dev";
+const DEFAULT_RELAY = "https://relay-production-a9d5.up.railway.app";
 const DEFAULT_POLL_INTERVAL = 5;
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
@@ -111,9 +121,23 @@ export class LocalStore {
 
     // Create store.json if absent (encrypted)
     if (!existsSync(this.storePath)) {
+      const { generateKeypair } = await import("./crypto.js");
+      const keypair = generateKeypair();
+      const host = hostname();
+      const user = userInfo().username;
+      const device_id = createHash("sha256")
+        .update(`${host}:${user}`)
+        .digest("hex");
+
       const initial: StoreData = {
         version: STORE_VERSION,
-        identity: { name, created_at: new Date().toISOString() },
+        identity: {
+          name,
+          created_at: new Date().toISOString(),
+          identity_key_private: Buffer.from(keypair.privateKey).toString("hex"),
+          identity_key_public: Buffer.from(keypair.publicKey).toString("hex"),
+          device_id,
+        },
         connections: {},
       };
       this.writeStore(initial);
@@ -177,6 +201,39 @@ export class LocalStore {
     const data = await this.load();
     const { pending: _removed, ...rest } = data;
     this.writeStore(rest as StoreData);
+  }
+
+  async updateIdentity(updates: Partial<StoreData["identity"]>): Promise<void> {
+    const data = await this.load();
+    const updated: StoreData = {
+      ...data,
+      identity: { ...data.identity, ...updates },
+    };
+    this.writeStore(updated);
+  }
+
+  async addPendingInvite(invite: {
+    email: string;
+    email_hash: string;
+    created_at: string;
+  }): Promise<void> {
+    const data = await this.load();
+    const existing = data.pending_invites ?? [];
+    const updated: StoreData = {
+      ...data,
+      pending_invites: [...existing, invite],
+    };
+    this.writeStore(updated);
+  }
+
+  async removePendingInvite(emailHash: string): Promise<void> {
+    const data = await this.load();
+    const existing = data.pending_invites ?? [];
+    const updated: StoreData = {
+      ...data,
+      pending_invites: existing.filter((inv) => inv.email_hash !== emailHash),
+    };
+    this.writeStore(updated);
   }
 
   async getConfig(): Promise<Config> {
