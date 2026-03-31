@@ -1,0 +1,15 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  relay:
+    build: ./relay
+    ports:
+      - "3967:3967"
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: "3967"
+    depends_on:
+      - redis
