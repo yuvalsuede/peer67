@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { execSync } from "node:child_process";
 import { LocalStore } from "./store.js";
 
 const PEER67_DIR = process.env.PEER67_DIR ?? join(homedir(), ".peer67");
@@ -18,14 +17,6 @@ function prompt(question: string): Promise<string> {
   });
 }
 
-function isGloballyInstalled(): boolean {
-  try {
-    const result = execSync("which peer67", { encoding: "utf8" }).trim();
-    return result.length > 0;
-  } catch {
-    return false;
-  }
-}
 
 function resolveSettingsPath(): string {
   const primary = join(homedir(), ".claude", "settings.json");
@@ -66,9 +57,10 @@ function registerMcpServer(): { alreadyRegistered: boolean; path: string } {
     return { alreadyRegistered: true, path: settingsPath };
   }
 
-  const entry = isGloballyInstalled()
-    ? { command: "peer67", args: [] }
-    : { command: "npx", args: ["-y", "@peer67/mcp"] };
+  // Use absolute paths resolved at setup time — Claude Code may not have nvm in PATH
+  const nodePath = process.execPath; // absolute path to current node binary
+  const scriptPath = new URL("./index.js", import.meta.url).pathname; // absolute path to MCP entry
+  const entry = { command: nodePath, args: [scriptPath] };
 
   const updated = {
     ...settings,
@@ -107,19 +99,29 @@ export async function setup(): Promise<void> {
   await store.init(name);
   process.stdout.write(`  \x1b[32m✓\x1b[0m Identity created as "${name}"\n`);
 
-  // Step 2b: Optional email registration for discovery
-  const emailInput = await prompt("  Email (optional, for discovery): ");
-  if (emailInput) {
-    const { registerEmail, pollVerification } = await import("./tools/register.js");
+  // Step 2b: Email registration (mandatory — email is your identity)
+  const emailArg = process.argv.find((a, i) => process.argv[i - 1] === "--email");
+  const emailInput = emailArg ?? await prompt("  Email: ");
+  if (!emailInput) {
+    process.stdout.write("  Email is required.\n");
+    process.exit(1);
+  }
+
+  const { registerEmail, pollVerification } = await import("./tools/register.js");
+  try {
     const { email_hash } = await registerEmail(store, emailInput);
-    process.stdout.write("  Waiting for you to click the verification link...\n");
+    process.stdout.write("  Check your email and click the verification link...\n");
     const verified = await pollVerification(store, email_hash, 120, 2000);
     if (verified) {
       await store.updateIdentity({ email: emailInput });
-      process.stdout.write(`  \x1b[32m✓\x1b[0m Email verified — contacts can now find you as ${emailInput}\n`);
+      process.stdout.write(`  \x1b[32m✓\x1b[0m Email verified (${emailInput})\n`);
     } else {
-      process.stdout.write(`  \x1b[33m!\x1b[0m Verification timed out. Click the link in your email later, or run "peer67 register <email>" to retry.\n`);
+      process.stdout.write(`  \x1b[33m!\x1b[0m Verification timed out. Run "peer67 register ${emailInput}" to retry.\n`);
     }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    process.stdout.write(`  \x1b[31m✗\x1b[0m Registration failed: ${msg}\n`);
+    process.stdout.write(`  Run "peer67 register ${emailInput}" to retry.\n`);
   }
 
   // Step 3: Register MCP server

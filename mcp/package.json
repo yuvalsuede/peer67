@@ -1,11 +1,28 @@
 {
-  "name": "@peer67/mcp",
-  "version": "0.1.0",
-  "description": "MCP server for Peer67 — encrypted messaging tools for Claude",
+  "name": "peer67",
+  "version": "0.1.1",
+  "description": "Encrypted ephemeral messaging for Claude Code",
   "type": "module",
   "bin": {
-    "peer67": "./dist/index.js"
+    "peer67": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "peer67",
+    "mcp",
+    "claude",
+    "encrypted-messaging",
+    "e2e-encryption",
+    "agent-messaging"
+  ],
+  "author": "Yuval Suede (https://github.com/yuvalsuede)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuvalsuede/peer67.git"
+  },
+  "license": "MIT",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

@@ -4,7 +4,7 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM = process.env.FROM_EMAIL || "noreply@peer67.com";
+const FROM = process.env.FROM_EMAIL || "Peer67 <noreply@peer67.com>";
 
 export async function sendMagicLink(
   to: string,
@@ -48,7 +48,7 @@ export async function sendInviteEmail(
       `${fromHandle} invited you to Peer67 — encrypted ephemeral messaging.`,
       "",
       "To get started:",
-      "  npm install -g @peer67/mcp",
+      "  npm install -g peer67",
       "  peer67 setup",
       "",
       "Messages are end-to-end encrypted and auto-delete after 24 hours.",

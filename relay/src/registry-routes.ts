@@ -64,10 +64,10 @@ export async function registerRegistryRoutes(
 
     // In test mode (email not configured), return token directly
     if (!isEmailConfigured()) {
-      return reply.status(200).send({ email_hash, token });
+      return reply.status(200).send({ ok: true, email_hash, token });
     }
 
-    return reply.status(200).send({ email_hash });
+    return reply.status(200).send({ ok: true, email_hash });
   });
 
   // GET /r/verify
