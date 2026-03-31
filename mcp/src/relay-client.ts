@@ -40,4 +40,76 @@ export class RelayClient {
       throw new Error(`Relay DELETE failed: ${res.status}`);
     }
   }
+
+  async register(data: {
+    email: string;
+    handle: string;
+    pub: string;
+    device_id: string;
+  }): Promise<{ ok: boolean; token?: string; email_hash?: string; message?: string; error?: string }> {
+    const res = await fetch(`${this.baseUrl}/r/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return res.json() as any;
+  }
+
+  async checkVerification(emailHash: string, deviceId: string): Promise<boolean> {
+    const res = await fetch(
+      `${this.baseUrl}/r/check-verification?email_hash=${emailHash}&device_id=${deviceId}`
+    );
+    if (!res.ok) return false;
+    const body = await res.json() as { verified: boolean };
+    return body.verified;
+  }
+
+  async lookup(emailHash: string): Promise<{ found: boolean; handle?: string; pub?: string } | null> {
+    const res = await fetch(`${this.baseUrl}/r/lookup?email_hash=${emailHash}`);
+    if (!res.ok) return null;
+    return res.json() as any;
+  }
+
+  async directory(search?: string): Promise<Array<{ handle: string; pub: string }>> {
+    const url = search
+      ? `${this.baseUrl}/r/directory?q=${encodeURIComponent(search)}`
+      : `${this.baseUrl}/r/directory`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const body = await res.json() as { users: Array<{ handle: string; pub: string }> };
+    return body.users;
+  }
+
+  async invite(data: {
+    target_email: string;
+    from_handle: string;
+    from_pub: string;
+    from_relay: string;
+  }): Promise<{ ok: boolean; invite_id?: string; error?: string; handle?: string; pub?: string }> {
+    const res = await fetch(`${this.baseUrl}/r/invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return res.json() as any;
+  }
+
+  async getInvites(emailHash: string): Promise<Array<{
+    id: string;
+    from_handle: string;
+    from_pub: string;
+    from_relay: string;
+    created_at: string;
+  }>> {
+    const res = await fetch(`${this.baseUrl}/r/invites?email_hash=${emailHash}`);
+    if (!res.ok) return [];
+    const body = await res.json() as { invites: any[] };
+    return body.invites;
+  }
+
+  async deleteInvite(emailHash: string, inviteId: string): Promise<void> {
+    await fetch(`${this.baseUrl}/r/invites/${inviteId}?email_hash=${emailHash}`, {
+      method: "DELETE",
+    });
+  }
 }
