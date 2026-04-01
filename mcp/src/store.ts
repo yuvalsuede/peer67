@@ -46,6 +46,12 @@ export interface StoreData {
   connections: Record<string, ConnectionData>;
   pending?: PendingConnection;
   pending_invites?: Array<{ email: string; email_hash: string; created_at: string }>;
+  incoming_requests?: Array<{
+    from_handle: string;
+    from_pub: string;
+    code: string;
+    created_at: string;
+  }>;
 }
 
 interface Config {
@@ -234,6 +240,43 @@ export class LocalStore {
       pending_invites: existing.filter((inv) => inv.email_hash !== emailHash),
     };
     this.writeStore(updated);
+  }
+
+  async addIncomingRequest(request: {
+    from_handle: string;
+    from_pub: string;
+    code: string;
+    created_at: string;
+  }): Promise<void> {
+    const data = await this.load();
+    const existing = data.incoming_requests ?? [];
+    // Deduplicate by from_handle
+    if (existing.some(r => r.from_handle === request.from_handle)) return;
+    const updated: StoreData = {
+      ...data,
+      incoming_requests: [...existing, request],
+    };
+    this.writeStore(updated);
+  }
+
+  async removeIncomingRequest(fromHandle: string): Promise<void> {
+    const data = await this.load();
+    const existing = data.incoming_requests ?? [];
+    const updated: StoreData = {
+      ...data,
+      incoming_requests: existing.filter((r) => r.from_handle !== fromHandle),
+    };
+    this.writeStore(updated);
+  }
+
+  async getIncomingRequests(): Promise<Array<{
+    from_handle: string;
+    from_pub: string;
+    code: string;
+    created_at: string;
+  }>> {
+    const data = await this.load();
+    return data.incoming_requests ?? [];
   }
 
   async getConfig(): Promise<Config> {

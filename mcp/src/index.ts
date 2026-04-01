@@ -9,7 +9,7 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { LocalStore } from "./store.js";
-import { connectCreate, connectAccept, connectComplete, checkConnectInbox, connectAutoInitiate } from "./tools/connect.js";
+import { connectCreate, connectAccept, connectComplete, checkConnectInbox, connectAutoInitiate, acceptRequest, declineRequest } from "./tools/connect.js";
 import { sendMessage } from "./tools/send.js";
 import { checkInbox, acknowledgeMessages } from "./tools/inbox.js";
 import { listContacts, disconnectContact } from "./tools/contacts.js";
@@ -195,6 +195,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "peer67_requests",
+      description: "View, accept, or decline incoming connection requests.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["list", "accept", "decline"],
+            description: "list: show pending requests, accept: accept a request, decline: decline a request",
+          },
+          from: {
+            type: "string",
+            description: "The handle of the person (required for accept/decline)",
+          },
+        },
+      },
+    },
   ],
 }));
 
@@ -369,6 +387,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return text(`${header}\n\n${lines.join("\n")}`);
       }
 
+      case "peer67_requests": {
+        const action = (params.action as string) || "list";
+        const from = params.from as string | undefined;
+
+        if (action === "accept") {
+          if (!from) return text("Provide the 'from' handle to accept.");
+          const result = await acceptRequest(store, from);
+          return text(result.message);
+        }
+
+        if (action === "decline") {
+          if (!from) return text("Provide the 'from' handle to decline.");
+          const result = await declineRequest(store, from);
+          return text(result.message);
+        }
+
+        // list
+        const requests = await store.getIncomingRequests();
+        if (requests.length === 0) {
+          return text("No pending connection requests.");
+        }
+
+        const lines = requests.map(r => {
+          const ago = timeAgo(new Date(r.created_at));
+          return `>> ${r.from_handle} wants to connect (${ago})`;
+        });
+        return text(`Pending requests:\n\n${lines.join("\n")}\n\nUse peer67_requests with action='accept' or 'decline' and from='<handle>'.`);
+      }
+
       default:
         return text(`Unknown tool: ${name}`);
     }
@@ -445,7 +492,7 @@ async function pollNonMessageEvents(): Promise<void> {
         method: "notifications/message",
         params: {
           level: "info",
-          message: `${incomingHandle} has connected with you! You can now exchange messages.`,
+          message: `---\n>> ${incomingHandle} wants to connect with you.\n>> Say "accept ${incomingHandle}" or "decline ${incomingHandle}"\n---`,
         },
       });
     }

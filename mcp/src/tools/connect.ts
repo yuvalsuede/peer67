@@ -248,13 +248,18 @@ export async function checkConnectInbox(store: LocalStore): Promise<string | nul
         continue;
       }
 
-      // f. Call connectAccept to complete the connection
-      await connectAccept(store, parsed.from_handle, parsed.code);
+      // f. Store as incoming request (don't auto-accept — wait for user approval)
+      await store.addIncomingRequest({
+        from_handle: parsed.from_handle,
+        from_pub: parsed.from_pub,
+        code: parsed.code,
+        created_at: new Date().toISOString(),
+      });
 
-      // g. DELETE the blob from connect-inbox
+      // g. DELETE the blob from connect-inbox (we stored it locally)
       await relay.del(connectInbox, relayBlob.id);
 
-      // h. Return from_handle
+      // h. Return from_handle so the caller can notify the user
       return parsed.from_handle;
     } catch {
       // Silently skip blobs that fail decryption (could be garbage)
@@ -263,4 +268,40 @@ export async function checkConnectInbox(store: LocalStore): Promise<string | nul
   }
 
   return null;
+}
+
+/**
+ * Accept an incoming connection request.
+ */
+export async function acceptRequest(
+  store: LocalStore,
+  fromHandle: string
+): Promise<{ accepted: boolean; message: string }> {
+  const requests = await store.getIncomingRequests();
+  const request = requests.find(r => r.from_handle === fromHandle);
+  if (!request) {
+    throw new Error(`No pending request from "${fromHandle}".`);
+  }
+
+  await connectAccept(store, request.from_handle, request.code);
+  await store.removeIncomingRequest(fromHandle);
+
+  return {
+    accepted: true,
+    message: `Connected with ${fromHandle}! You can now exchange messages.`,
+  };
+}
+
+/**
+ * Decline an incoming connection request.
+ */
+export async function declineRequest(
+  store: LocalStore,
+  fromHandle: string
+): Promise<{ declined: boolean; message: string }> {
+  await store.removeIncomingRequest(fromHandle);
+  return {
+    declined: true,
+    message: `Declined connection from ${fromHandle}.`,
+  };
 }
