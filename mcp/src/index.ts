@@ -47,20 +47,26 @@ const server = new Server(
   {
     capabilities: { tools: {} },
     instructions: `
-You are helping the user communicate privately with their contacts via Peer67, an end-to-end encrypted messaging tool.
+You are helping the user communicate privately via Peer67, an end-to-end encrypted messaging tool.
 
-Behavioral rules:
-- NEVER send a message without first showing the user a draft and getting explicit confirmation.
+MESSAGE HANDLING:
+- When the user says "tell X ..." or "message X ...", SEND IT immediately. No drafts, no confirmation.
+- When messages arrive via notification, show them immediately using >> prefix format.
+- After showing an incoming message, the user will reply naturally if they want to. If their next message looks like a reply, send it to that sender.
+- Group multiple messages from the same sender.
+
+FORMATTING:
+- Incoming messages: >> sender (time): "message"
+- Use --- separators between message blocks and other conversation
+- Never show raw JSON
+
+PRIVACY:
 - NEVER store message content in memory, summaries, or notes.
-- ALWAYS present messages conversationally — show sender, time, and body in a readable format, never as raw JSON.
-- On errors, explain what went wrong in plain language and offer to retry or suggest next steps.
-- When showing inbox messages, group by sender if helpful and use human-readable timestamps.
-- Respect user privacy: do not volunteer information about contacts or messages unless the user asks.
 
-Discovery & registration:
-- Use peer67_register to let contacts find the user by email. They must click the verification link sent to their email.
-- Use peer67_invite to connect with someone by email. If they're registered, it auto-connects. Otherwise, it sends them an invite to join Peer67.
-- Use peer67_directory to browse or search registered users on the relay.
+DISCOVERY:
+- Use peer67_register to register email for discovery.
+- Use peer67_invite to connect with someone by email.
+- Use peer67_directory to browse registered users.
     `.trim(),
   }
 );
@@ -99,7 +105,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "peer67_send",
-      description: "Send an encrypted message to a contact. Always show a draft to the user first and get confirmation before calling this.",
+      description: "Send an encrypted message to a contact.",
       inputSchema: {
         type: "object",
         properties: {
@@ -371,9 +377,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ── Background polling ─────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 10_000;
+type InboxMessage = Awaited<ReturnType<typeof checkInbox>>[number];
 
-async function pollCycle(): Promise<void> {
+async function notifyMessages(messages: InboxMessage[]): Promise<void> {
+  if (messages.length === 0) return;
+
+  const grouped: Record<string, typeof messages> = {};
+  for (const m of messages) {
+    if (!grouped[m.from]) grouped[m.from] = [];
+    grouped[m.from].push(m);
+  }
+
+  const parts: string[] = [];
+  for (const [sender, msgs] of Object.entries(grouped)) {
+    for (const m of msgs) {
+      const ago = timeAgo(new Date(m.timestamp));
+      parts.push(`>> ${sender}  (${ago})\n>> ${m.body}`);
+    }
+  }
+
+  await acknowledgeMessages(messages);
+
+  await server.notification({
+    method: "notifications/message",
+    params: {
+      level: "info",
+      message: `---\n${parts.join("\n\n")}\n---`,
+    },
+  });
+}
+
+async function pollMessages(): Promise<void> {
+  try {
+    // Check for new messages and push them instantly
+    const messages = await checkInbox(store);
+    await notifyMessages(messages);
+  } catch {
+    // Silent
+  }
+}
+
+async function pollNonMessageEvents(): Promise<void> {
   try {
     // 1. Check if any pending outbound connection handshakes are complete
     const completedName = await connectComplete(store);
@@ -407,7 +451,7 @@ async function pollCycle(): Promise<void> {
   }
 
   try {
-    // 3. Check pending invites — auto-connect if they have now registered
+    // 4. Check pending invites — auto-connect if they have now registered
     const data = await store.load();
     const pendingInvites = data.pending_invites ?? [];
 
@@ -578,19 +622,59 @@ if (cliArgs.length > 0) {
 } else {
   // MCP server mode
   const transport = new StdioServerTransport();
-  server.connect(transport).then(() => {
-    const pollInterval = setInterval(() => {
-      void pollCycle();
-    }, POLL_INTERVAL_MS);
+  server.connect(transport).then(async () => {
+    // 1. Immediate poll on startup
+    await pollMessages();
+    await pollNonMessageEvents();
+
+    // 2. Start SSE for real-time messages
+    const data = await store.load();
+    const config = await store.getConfig();
+    const relayUrl = process.env.PEER67_RELAY ?? config.default_relay;
+    const relay = new RelayClient(relayUrl);
+    const mailboxIds = Object.values(data.connections).map(c => c.mailbox_recv);
+
+    let fallbackPoll: ReturnType<typeof setInterval> | null = null;
+    let sseSub: ReturnType<typeof relay.subscribe> | null = null;
+
+    if (mailboxIds.length > 0) {
+      sseSub = relay.subscribe(
+        mailboxIds,
+        async () => {
+          // New blob arrived — check messages
+          try { await pollMessages(); } catch {}
+        },
+        () => {
+          // SSE error — start fallback polling
+          if (!fallbackPoll) {
+            fallbackPoll = setInterval(async () => {
+              try { await pollMessages(); } catch {}
+            }, 5_000);
+          }
+        },
+        () => {
+          // SSE connected — stop fallback
+          if (fallbackPoll) {
+            clearInterval(fallbackPoll);
+            fallbackPoll = null;
+          }
+        },
+      );
+    }
+
+    // 3. Slow poll for non-message events (30s)
+    const slowPoll = setInterval(async () => {
+      try { await pollNonMessageEvents(); } catch {}
+    }, 30_000);
 
     process.on("SIGINT", () => {
-      clearInterval(pollInterval);
+      sseSub?.stop();
+      clearInterval(slowPoll);
+      if (fallbackPoll) clearInterval(fallbackPoll);
       process.exit(0);
     });
   }).catch((err: unknown) => {
-    process.stderr.write(
-      `Fatal: ${err instanceof Error ? err.message : String(err)}\n`
-    );
+    process.stderr.write(`Fatal: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
   });
 }

@@ -112,4 +112,77 @@ export class RelayClient {
       method: "DELETE",
     });
   }
+
+  subscribe(
+    mailboxIds: string[],
+    onNotify: (event: { mailbox: string; blob_id: string; ts: number }) => void,
+    onError?: (err: Error) => void,
+    onConnect?: () => void,
+  ): { stop: () => void; updateMailboxes: (ids: string[]) => void } {
+    let controller = new AbortController();
+    let currentIds = [...mailboxIds];
+    let running = true;
+    let reconnectMs = 1000;
+    const maxReconnectMs = 30000;
+
+    const connect = async (ids: string[]) => {
+      if (!running || ids.length === 0) return;
+      controller = new AbortController();
+      const url = `${this.baseUrl}/subscribe?mailboxes=${ids.join(",")}`;
+
+      try {
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { Accept: "text/event-stream" },
+        });
+
+        if (!res.ok || !res.body) throw new Error(`SSE failed: ${res.status}`);
+
+        reconnectMs = 1000;
+        onConnect?.();
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (running) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? "";
+
+          for (const frame of frames) {
+            const dataLine = frame.split("\n").find(l => l.startsWith("data: "));
+            if (dataLine) {
+              try {
+                onNotify(JSON.parse(dataLine.slice(6)));
+              } catch { /* skip bad JSON */ }
+            }
+          }
+        }
+      } catch (err: unknown) {
+        if (!running) return;
+        if ((err as Error).name !== "AbortError") {
+          onError?.(err as Error);
+        }
+      }
+
+      if (running) {
+        setTimeout(() => connect(currentIds), reconnectMs);
+        reconnectMs = Math.min(reconnectMs * 2, maxReconnectMs);
+      }
+    };
+
+    connect(currentIds);
+
+    return {
+      stop: () => { running = false; controller.abort(); },
+      updateMailboxes: (ids: string[]) => {
+        currentIds = [...ids];
+        controller.abort(); // will reconnect with new IDs
+      },
+    };
+  }
 }
