@@ -9,7 +9,10 @@ peer67 is an MCP server and Claude Code channel that enables end-to-end encrypte
 ```bash
 npm install -g peer67
 peer67 setup
+claude --dangerously-load-development-channels server:peer67
 ```
+
+Channels are in research preview and require the flag above for real-time message push. Without it, peer67 still works but messages only appear when you check /peer67:inbox.
 
 Then in Claude Code:
 ```

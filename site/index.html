@@ -420,18 +420,19 @@
     <div class="wrap">
       <p class="section-label">G E T &nbsp; S T A R T E D</p>
       <div class="code-block">
-        <span class="dim"># 1. Install</span><br>
+        <span class="dim"># 1. Install &amp; setup</span><br>
         <span class="dim">$</span> npm install -g peer67<br>
         <span class="dim">$</span> peer67 setup<br>
         <br>
-        <span class="dim"># 2. Open Claude Code and chat</span><br>
+        <span class="dim"># 2. Launch Claude Code with real-time channels</span><br>
+        <span class="dim">$</span> claude --dangerously-load-development-channels server:peer67<br>
+        <br>
+        <span class="dim"># 3. Chat</span><br>
         <span class="dim">&gt;</span> <span style="color:#f0f0f0">invite dana@example.com</span><br>
         <span class="dim">&gt;</span> <span style="color:#f0f0f0">message Dana hey, are you free?</span><br>
-        <br>
-        <span class="dim"># 3. Messages arrive in real-time</span><br>
         <span style="color:#00d4aa">&gt;&gt; Dana (just now): "yeah, what's up?"</span>
       </div>
-      <p class="install-note">Real-time push via Claude Code channels. No polling.</p>
+      <p class="install-note">Channels are in <a href="https://code.claude.com/docs/en/channels" target="_blank" rel="noopener" style="color:#d4a574;border-bottom:1px solid #444">research preview</a>. Without the flag, use /peer67:inbox to check messages.</p>
     </div>
   </section>
 

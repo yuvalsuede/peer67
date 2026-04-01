@@ -25,7 +25,15 @@ peer67 setup
 
 `peer67 setup` asks for your name and email, sends a verification link, and registers the MCP server with Claude Code automatically.
 
-Then open Claude Code and start chatting:
+### Real-time mode (channels)
+
+peer67 uses Claude Code [channels](https://code.claude.com/docs/en/channels) for real-time message push. Channels are in research preview — start Claude Code with:
+
+```bash
+claude --dangerously-load-development-channels server:peer67
+```
+
+Then start chatting:
 
 ```
 > invite dana@example.com
@@ -34,7 +42,7 @@ Then open Claude Code and start chatting:
 >> Dana (just now): "yeah, what's up?"
 ```
 
-Messages push in real-time via Claude Code channels — no polling.
+Messages push in real-time — no polling. Without the channel flag, peer67 still works but messages only appear when you explicitly check `/peer67:inbox`.
 
 ## Multiple identities
 
