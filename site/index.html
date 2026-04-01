@@ -44,23 +44,26 @@
       transition: color .15s;
     }
     .topbar-links a:hover { color: #f0f0f0; }
-    .topbar-oss {
-      padding: .35rem 1rem;
-      background: #f0f0f0;
-      color: #0d0d0d;
-      font-weight: 500;
-      border-radius: 4px;
-      transition: background .15s, transform .15s, box-shadow .15s;
-    }
-    .topbar-oss:hover {
-      color: #0d0d0d !important;
-      background: #fff;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(240,240,240,.2);
-    }
-
     /* ── Hero ── */
     .hero { padding: 8rem 2rem 2.5rem; text-align: center; }
+    .hero-oss-btn {
+      display: inline-block;
+      margin-bottom: 2rem;
+      padding: .6rem 2rem;
+      background: #f0f0f0;
+      color: #0d0d0d;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem;
+      font-weight: 500;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: background .15s, transform .15s, box-shadow .15s;
+    }
+    .hero-oss-btn:hover {
+      background: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(240,240,240,.2);
+    }
     .hero h1 {
       font-family: 'JetBrains Mono', monospace;
       font-size: clamp(4rem, 12vw, 7rem);
@@ -349,11 +352,11 @@
     <div class="topbar-links">
       <a href="https://github.com/yuvalsuede/peer67/blob/main/protocol/PROTOCOL.md" target="_blank" rel="noopener">Docs</a>
       <a href="https://github.com/yuvalsuede/peer67" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://github.com/yuvalsuede/peer67" class="topbar-oss" target="_blank" rel="noopener">Open Source</a>
     </div>
   </nav>
 
   <section class="hero">
+    <a href="https://github.com/yuvalsuede/peer67" class="hero-oss-btn" target="_blank" rel="noopener">Open Source</a>
     <h1><span class="glitch" data-text="peer67" id="gtitle">peer67</span></h1>
     <p class="hero-sub">message your friends through <span style="color:#d4a574">Claude</span></p>
   </section>
