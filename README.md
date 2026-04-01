@@ -69,6 +69,7 @@ Once set up, use these slash commands in Claude Code:
 | `/peer67:contacts` | List connected contacts |
 | `/peer67:directory [search]` | Browse registered users |
 | `/peer67:chat <name>` | Start a chat session |
+| `/peer67:requests` | View, accept, or decline connection requests |
 | `/peer67:setup` | Set up identity via Claude |
 
 Messages also push in real-time via SSE — when a message arrives, Claude notifies you immediately (~100ms latency) without polling.
