@@ -54,29 +54,30 @@ const server = new Server(
       experimental: { "claude/channel": {} },
     },
     instructions: `
-You are helping the user communicate privately via Peer67, an end-to-end encrypted messaging tool.
+You are a messaging relay for Peer67, an end-to-end encrypted messaging tool.
 
-Messages from contacts arrive in real-time as <channel source="peer67" from="ContactName"> tags.
-When you see one, show it immediately with >> prefix format and respond naturally.
+INCOMING MESSAGES arrive as <channel source="peer67" from="Name" time="Xm ago"> tags.
+Show them IMMEDIATELY:
+---
+>> Name (time): "message"
+---
 
-MESSAGE HANDLING:
-- When the user says "tell X ..." or "message X ...", SEND IT immediately using peer67_send. No drafts, no confirmation.
-- Incoming messages push automatically via channel — no need to poll.
-- After showing an incoming message, the user will reply naturally. If their next message looks like a reply, send it to that sender.
-- Group multiple messages from the same sender.
+SENDING — be INSTANT:
+- "tell X ...", "message X ...", any reply in chat mode → call peer67_send immediately.
+- NEVER ask "would you like to send this?" or "shall I send?". NEVER draft. NEVER confirm. Just send.
+- NEVER send code, tool output, or file contents as messages — only the user's natural language.
+
+CHAT MODE (after /peer67:chat):
+- Every user message is a message to that contact. Send it. No questions.
 
 FORMATTING:
-- Incoming messages: >> sender (time): "message"
-- Use --- separators between message blocks and other conversation
-- Never show raw JSON
+- Incoming: >> sender (time): "message"
+- Sent: Sent.
+- Use --- separators between message blocks and other conversation.
+- Never show raw JSON, blob IDs, expiry times, or technical details.
 
 PRIVACY:
 - NEVER store message content in memory, summaries, or notes.
-
-DISCOVERY:
-- Use peer67_register to register email for discovery.
-- Use peer67_invite to connect with someone by email.
-- Use peer67_directory to browse registered users.
     `.trim(),
   }
 );
@@ -273,23 +274,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const to = params.to as string;
         const message = params.message as string;
 
-        const result = await sendMessage(store, to, message);
-        let reply = `Message sent to ${to}.`;
-
-        // Piggyback: check inbox for new messages from all contacts
-        try {
-          const incoming = await checkInbox(store);
-          if (incoming.length > 0) {
-            const formatted = incoming.map((msg) => {
-              const when = timeAgo(new Date(msg.timestamp));
-              return `>> ${msg.from} (${when}): ${msg.body}`;
-            }).join("\n");
-            await acknowledgeMessages(incoming);
-            reply += `\n\n--- New messages ---\n${formatted}`;
-          }
-        } catch {}
-
-        return text(reply);
+        await sendMessage(store, to, message);
+        return text(`Sent.`);
       }
 
       case "peer67_inbox": {
@@ -336,22 +322,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return `• ${c.display_name} (connected ${since}) — relay: ${c.relay_url}`;
         });
 
-        let reply = `Your contacts (${contacts.length}):\n\n${lines.join("\n")}`;
-
-        // Piggyback: check inbox for new messages
-        try {
-          const incoming = await checkInbox(store);
-          if (incoming.length > 0) {
-            const formatted = incoming.map((msg) => {
-              const when = timeAgo(new Date(msg.timestamp));
-              return `>> ${msg.from} (${when}): ${msg.body}`;
-            }).join("\n");
-            await acknowledgeMessages(incoming);
-            reply += `\n\n--- New messages ---\n${formatted}`;
-          }
-        } catch {}
-
-        return text(reply);
+        return text(`Your contacts (${contacts.length}):\n\n${lines.join("\n")}`);
       }
 
       case "peer67_disconnect": {

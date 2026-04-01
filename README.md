@@ -23,7 +23,16 @@ peer67 setup
 
 `peer67 setup` asks for your name and email, sends a verification link, and registers the MCP server with Claude Code automatically.
 
-Then open Claude Code and say "message someone" — or use the `/peer67:send` skill.
+Then open Claude Code and start chatting:
+
+```
+> invite dana@example.com
+> message Dana hey, are you free?
+
+>> Dana (just now): "yeah, what's up?"
+```
+
+Messages push in real-time via Claude Code channels — no polling.
 
 ## Multiple identities
 
@@ -72,7 +81,7 @@ Once set up, use these slash commands in Claude Code:
 | `/peer67:requests` | View, accept, or decline connection requests |
 | `/peer67:setup` | Set up identity via Claude |
 
-Messages also push in real-time via SSE — when a message arrives, Claude notifies you immediately (~100ms latency) without polling.
+Messages push in real-time via Claude Code channels. When a message arrives, it appears in your conversation instantly — no polling needed.
 
 ## Architecture
 
@@ -86,7 +95,7 @@ Human ↔ Claude ↔ peer67 MCP ↔ Relay ↔ peer67 MCP ↔ Claude ↔ Human
 - **Connection codes** — encode an X25519 public key + relay URL. Share out-of-band. One-time use.
 - **Two mailboxes per connection** — each direction gets its own address. The relay cannot link them.
 - **Discovery layer** — optional email registration (`/r/*` endpoints). Register to be findable; invite by email auto-connects if the recipient is already registered.
-- **SSE push** — the MCP server subscribes to `/subscribe` on the relay for instant delivery. Falls back to polling on disconnect.
+- **Real-time push** — uses Claude Code channels (`notifications/claude/channel`) for instant message delivery. SSE subscription to the relay triggers channel notifications that appear directly in your conversation.
 
 ## Security
 

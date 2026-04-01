@@ -309,6 +309,14 @@
       transition: color .15s, border-color .15s;
     }
     .card a:hover { color: #f0f0f0; border-color: #777; }
+    .card code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .82rem;
+      color: #d4a574;
+      background: rgba(212,165,116,.08);
+      padding: .15rem .4rem;
+      border-radius: 3px;
+    }
 
     /* ── Footer ── */
     footer { padding: 4rem 0 3rem; text-align: center; }
@@ -394,12 +402,54 @@
 
   <section class="install-section">
     <div class="wrap">
-      <p class="section-label">I N S T A L L</p>
+      <p class="section-label">G E T &nbsp; S T A R T E D</p>
       <div class="code-block">
+        <span class="dim"># 1. Install</span><br>
         <span class="dim">$</span> npm install -g peer67<br>
-        <span class="dim">$</span> peer67 setup
+        <span class="dim">$</span> peer67 setup<br>
+        <br>
+        <span class="dim"># 2. Open Claude Code and chat</span><br>
+        <span class="dim">&gt;</span> <span style="color:#f0f0f0">invite dana@example.com</span><br>
+        <span class="dim">&gt;</span> <span style="color:#f0f0f0">message Dana hey, are you free?</span><br>
+        <br>
+        <span class="dim"># 3. Messages arrive in real-time</span><br>
+        <span style="color:#00d4aa">&gt;&gt; Dana (just now): "yeah, what's up?"</span>
       </div>
-      <p class="install-note">Then open Claude Code and say "message someone"</p>
+      <p class="install-note">Real-time push via Claude Code channels. No polling.</p>
+    </div>
+  </section>
+
+  <section class="cards-section">
+    <div class="wrap-wide">
+      <div class="cards-grid">
+        <article class="card">
+          <p class="card-heading">QUICK START</p>
+          <ul>
+            <li><code>npm i -g peer67 && peer67 setup</code></li>
+            <li><code>/peer67:invite dana@example.com</code></li>
+            <li><code>/peer67:chat Dana</code></li>
+            <li>Messages push in real-time</li>
+          </ul>
+        </article>
+        <article class="card">
+          <p class="card-heading">SECURITY</p>
+          <ul>
+            <li>End-to-end encrypted (X25519 + AES-256-GCM)</li>
+            <li>Zero-knowledge relay</li>
+            <li>No accounts, no metadata</li>
+            <li>Open source &mdash; MIT License</li>
+          </ul>
+        </article>
+        <article class="card">
+          <p class="card-heading">SLASH COMMANDS</p>
+          <ul>
+            <li><code>/peer67:chat &lt;name&gt;</code> &mdash; start chatting</li>
+            <li><code>/peer67:send &lt;name&gt; &lt;msg&gt;</code></li>
+            <li><code>/peer67:invite &lt;email&gt;</code></li>
+            <li><code>/peer67:contacts</code> &middot; <code>/peer67:inbox</code></li>
+          </ul>
+        </article>
+      </div>
     </div>
   </section>
 
@@ -410,40 +460,6 @@
         <svg viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
         View on GitHub
       </a>
-    </div>
-  </section>
-
-  <section class="cards-section">
-    <div class="wrap-wide">
-      <div class="cards-grid">
-        <article class="card">
-          <p class="card-heading">HOW IT WORKS</p>
-          <ul>
-            <li>Install peer67</li>
-            <li>Register with your email</li>
-            <li>Say "message dana@example.com"</li>
-            <li>Messages auto-delete in 24 hours</li>
-          </ul>
-        </article>
-        <article class="card">
-          <p class="card-heading">SECURITY</p>
-          <ul>
-            <li>End-to-end encrypted (X25519 + AES-256-GCM)</li>
-            <li>Zero-knowledge relay</li>
-            <li>No accounts, no metadata</li>
-            <li>Open source</li>
-          </ul>
-        </article>
-        <article class="card">
-          <p class="card-heading">OPEN SOURCE</p>
-          <ul>
-            <li><a href="https://github.com/yuvalsuede/peer67" target="_blank" rel="noopener">GitHub</a></li>
-            <li><a href="https://npmjs.com/package/peer67" target="_blank" rel="noopener">npm</a></li>
-            <li>Self-host your own relay</li>
-            <li>MIT License</li>
-          </ul>
-        </article>
-      </div>
     </div>
   </section>
 
@@ -540,15 +556,22 @@
     }
 
     type(document.getElementById('tc0'), 'tell dana the deck is ready', 400, null);
-    show(document.getElementById('tl1'), "  I'll send to Dana:",  920);
-    show(document.getElementById('tl2'), '  "The deck is ready"', 1300);
-    show(document.getElementById('tl3'), '  Send it?',            1680);
-    type(document.getElementById('tc4'), 'yes', 2200, null);
+    show(document.getElementById('tl1'), '  Sent.', 920);
+    show(document.getElementById('tl2'), '', 1300);
+    show(document.getElementById('tl3'), '  \x1b[32m>> Dana (just now): "on it, sending comments now"\x1b[0m', 1800);
+    // Simulate real-time push
+    setTimeout(() => {
+      const el3 = document.getElementById('tl3');
+      el3.closest('.t-line').style.opacity = '1';
+      el3.style.color = '#00d4aa';
+      el3.textContent = '  >> Dana (just now): "on it, sending comments now"';
+    }, 1800);
+    type(document.getElementById('tc4'), 'tell her thanks!', 2600, null);
     setTimeout(() => {
       const el = document.getElementById('tl5');
       el.closest('.t-line').style.opacity = '1';
-      el.insertBefore(document.createTextNode('  Sent. Encrypted. Expires in 24 hours.'), el.firstChild);
-    }, 2700);
+      el.insertBefore(document.createTextNode('  Sent.'), el.firstChild);
+    }, 3200);
   })();
   </script>
 </body>
