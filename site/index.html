@@ -44,6 +44,20 @@
       transition: color .15s;
     }
     .topbar-links a:hover { color: #f0f0f0; }
+    .topbar-oss {
+      padding: .35rem 1rem;
+      background: #f0f0f0;
+      color: #0d0d0d;
+      font-weight: 500;
+      border-radius: 4px;
+      transition: background .15s, transform .15s, box-shadow .15s;
+    }
+    .topbar-oss:hover {
+      color: #0d0d0d !important;
+      background: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(240,240,240,.2);
+    }
 
     /* ── Hero ── */
     .hero { padding: 8rem 2rem 2.5rem; text-align: center; }
@@ -327,6 +341,7 @@
     <div class="topbar-links">
       <a href="https://github.com/yuvalsuede/peer67/blob/main/protocol/PROTOCOL.md" target="_blank" rel="noopener">Docs</a>
       <a href="https://github.com/yuvalsuede/peer67" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/yuvalsuede/peer67" class="topbar-oss" target="_blank" rel="noopener">Open Source</a>
     </div>
   </nav>
 
