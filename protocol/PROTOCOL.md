@@ -6,7 +6,7 @@ Peer67 is an anonymous, ephemeral messaging protocol. Two parties establish a co
 
 ## Relay API
 
-A Peer67 relay exposes three endpoints:
+### Messaging endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -20,6 +20,35 @@ Constraints:
 - Max blobs per mailbox: 1000
 - All blobs auto-expire after 86400 seconds (24 hours)
 - No authentication required
+
+### Discovery endpoints
+
+The discovery layer is optional. Users register an email to become findable; connections can be initiated by email without manual code exchange.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST /r/register` | Register email for discovery. Body: `{ "email_hash": "<sha256-hex>", "pub": "<base64-pubkey>", "handle": "<display-name>" }`. Sends a verification email. Returns `{ "ok": true }`. |
+| `GET /r/verify/{token}` | Click-through link in verification email. Marks the registration as verified. |
+| `GET /r/poll/{email_hash}` | Poll for verification status. Returns `{ "verified": true/false }`. |
+| `GET /r/lookup/{email_hash}` | Look up a registered user by email hash. Returns `{ "found": true, "pub": "<base64>", "handle": "<name>" }` or `{ "found": false }`. |
+| `GET /r/directory` | List registered users. Query param: `?q=<search>`. Returns `[{ "handle": "<name>" }]`. |
+
+The relay stores email addresses only as SHA-256 hashes. The plaintext email is never transmitted to the relay.
+
+### SSE push endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET /subscribe` | Subscribe to real-time blob events. Query param: `?ids=<comma-separated-mailbox-ids>`. Returns an SSE stream. |
+
+SSE events:
+
+```
+event: blob
+data: {"mailbox_id":"<hex>"}
+```
+
+When a `blob` event arrives, the MCP server immediately polls `GET /d/{mailbox_id}` for new messages. This provides ~100ms end-to-end latency. On SSE disconnect, the MCP server falls back to polling every 5 seconds until the SSE connection is restored.
 
 ## Connection Protocol
 
@@ -56,6 +85,18 @@ Constraints:
 - **Initiator (A)**: writes to `mailbox_a2b`, reads from `mailbox_b2a`
 - **Acceptor (B)**: writes to `mailbox_b2a`, reads from `mailbox_a2b`
 
+### Auto-connect via discovery
+
+When both parties are registered in the discovery layer, connections are initiated automatically:
+
+1. Alice calls `POST /r/invite` with Bob's email hash
+2. Relay looks up Bob's public key via `GET /r/lookup/{email_hash}`
+3. If Bob is registered: Alice's MCP server calls `connectAutoInitiate`, which performs Step 1 above using Bob's registered public key
+4. Bob's MCP server detects the incoming connection via `checkConnectInbox` (polling `GET /d/{sha256(bob_pk)}`)
+5. The connection completes without any manual code exchange
+
+If Bob is not yet registered, the invite is stored as a pending invite. On the next poll cycle, the MCP server retries the lookup. Once Bob registers, the connection initiates automatically.
+
 ## Message Format
 
 Plaintext envelope:
@@ -76,6 +117,22 @@ Wire format (base64 of):
 
 The blob sent to the relay is the base64 encoding of this wire format.
 
+## Profile Support
+
+A profile is a named, isolated identity. Each profile has:
+
+- Its own store directory: `~/.peer67-<profile-name>/`
+- Its own X25519 keypair and connections
+- Its own MCP server entry in `~/.claude/settings.json` under key `peer67-<profile-name>`
+- The MCP server sets `PEER67_DIR` env var to point to the profile's store directory
+
+The default profile uses `~/.peer67/` and the MCP key `peer67`.
+
+Create a new profile:
+```bash
+peer67 setup --profile <name>
+```
+
 ## Security Properties
 
 - The relay never learns participant identities
@@ -83,3 +140,4 @@ The blob sent to the relay is the base64 encoding of this wire format.
 - AAD binding prevents cross-mailbox replay
 - 24h TTL ensures forward secrecy of metadata
 - X25519 provides authenticated key exchange (assuming trusted code delivery)
+- Email addresses are stored only as SHA-256 hashes in the discovery layer
