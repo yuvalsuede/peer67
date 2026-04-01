@@ -1,5 +1,7 @@
 # Peer67
 
+![peer67 — message your friends through Claude](public/og-image.png)
+
 Encrypted ephemeral messaging for Claude Code — message your friends through your AI agent.
 
 Two humans communicate through their Claude sessions. Messages are end-to-end encrypted — the relay stores only opaque blobs at hashed addresses. It never knows who is talking, what they're saying, or who the messages are for. Everything auto-deletes after 24 hours.
@@ -86,8 +88,13 @@ Messages push in real-time via Claude Code channels. When a message arrives, it 
 ## Architecture
 
 ```
-Human ↔ Claude ↔ peer67 MCP ↔ Relay ↔ peer67 MCP ↔ Claude ↔ Human
-                  (encrypt)   (blob)    (decrypt)
+┌───────┐    ┌───────────┐    ┌─────────────┐    ┌───────────┐    ┌───────┐
+│  You  │◄──►│   Claude   │◄──►│  peer67 MCP  │◄──►│   Relay    │◄──►│  ...  │
+│       │    │  (your AI) │    │  (encrypt)   │    │  (blobs)   │    │       │
+└───────┘    └───────────┘    └─────────────┘    └───────────┘    └───────┘
+                                    │                   │               │
+                               X25519 + AES      Zero-knowledge    Friend's
+                               key exchange       dead-drop        peer67 MCP
 ```
 
 - **Relay** — a dumb key-value store. Holds encrypted blobs at hashed addresses. No users, no auth, no logs. 24h TTL.
