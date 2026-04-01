@@ -189,7 +189,7 @@
       background: #1c3a2e;
       box-shadow: 0 0 6px rgba(0,212,170,.1);
     }
-    #particle {
+    #particle, #particle2 {
       position: absolute; top: 50%;
       width: 10px; height: 10px;
       border-radius: 50%; background: #f0f0f0;
@@ -197,6 +197,10 @@
       transform: translate(-50%,-50%);
       pointer-events: none; z-index: 10;
       will-change: left;
+    }
+    #particle2 {
+      background: #d4a574;
+      box-shadow: 0 0 14px 5px rgba(212,165,116,.65);
     }
     .flow-label {
       text-align: center; margin-top: 1.5rem;
@@ -409,6 +413,7 @@
         <div class="pipe-track"            id="pt3"><div class="pipe-track-line"></div></div>
         <div class="pipe-node human"       id="pn4">Friend</div>
         <div id="particle"></div>
+        <div id="particle2"></div>
       </div>
       <p class="flow-label">encrypted end-to-end &middot; 24h auto-delete &middot; zero metadata</p>
     </div>
@@ -570,13 +575,14 @@
     // ── Glitch title ──────────────────────────────────────────────────────
     requestAnimationFrame(() => document.getElementById('gtitle').classList.add('run'));
 
-    // ── Particle animation ────────────────────────────────────────────────
+    // ── Particle animation (bidirectional) ─────────────────────────────
     const pipeline = document.getElementById('pipeline');
-    const dot      = document.getElementById('particle');
+    const dot1 = document.getElementById('particle');
+    const dot2 = document.getElementById('particle2');
     const nodeIds  = ['pn0','pn1','pn3','pn4'];
-    // node types: 0=human, 1=claude, 2=relay, 3=claude, 4=human
     const nodeTypes = ['human','claude','claude','human'];
-    const LOOP = 2600; // ms per full traversal
+    const LOOP = 3200; // ms per full traversal
+    const OFFSET = 0.5; // dot2 starts halfway offset
 
     function cx(id) {
       const pr = pipeline.getBoundingClientRect();
@@ -584,44 +590,50 @@
       return (nr.left + nr.width / 2) - pr.left;
     }
 
+    // Colors: dot1 = white→green (You→Friend), dot2 = amber→green (Friend→You)
+    const dot1Plain = { bg: '#f0f0f0', sh: '0 0 14px 5px rgba(240,240,240,.65)' };
+    const dot1Enc   = { bg: '#00d4aa', sh: '0 0 14px 5px rgba(0,212,170,.6)' };
+    const dot2Plain = { bg: '#d4a574', sh: '0 0 14px 5px rgba(212,165,116,.65)' };
+    const dot2Enc   = { bg: '#00d4aa', sh: '0 0 14px 5px rgba(0,212,170,.5)' };
+
     let t0 = null;
     function frame(ts) {
       if (!t0) t0 = ts;
-      const progress = ((ts - t0) % LOOP) / LOOP; // 0..1 linear
-
       const positions = nodeIds.map(id => cx(id));
       const totalDist = positions[3] - positions[0];
-      const x = positions[0] + totalDist * progress;
 
-      // Zone detection: encrypted between the two Claude nodes
-      const inEncZone = x > positions[1] && x < positions[2];
-      const nearClaude = (Math.abs(x - positions[1]) < 30 || Math.abs(x - positions[2]) < 30);
+      // Dot 1: left → right (You → Friend)
+      const p1 = ((ts - t0) % LOOP) / LOOP;
+      const x1 = positions[0] + totalDist * p1;
+      const enc1 = x1 > positions[1] && x1 < positions[2];
+      dot1.style.background = enc1 ? dot1Enc.bg : dot1Plain.bg;
+      dot1.style.boxShadow  = enc1 ? dot1Enc.sh : dot1Plain.sh;
+      dot1.style.left = x1 + 'px';
 
-      // Particle color
-      if (inEncZone) {
-        dot.style.background   = '#00d4aa';
-        dot.style.boxShadow    = '0 0 14px 5px rgba(0,212,170,.6)';
-      } else {
-        dot.style.background   = '#f0f0f0';
-        dot.style.boxShadow    = '0 0 14px 5px rgba(240,240,240,.65)';
-      }
-      dot.style.left = x + 'px';
+      // Dot 2: right → left (Friend → You), offset by half cycle
+      const p2 = ((ts - t0 + LOOP * OFFSET) % LOOP) / LOOP;
+      const x2 = positions[3] - totalDist * p2;
+      const enc2 = x2 > positions[1] && x2 < positions[2];
+      dot2.style.background = enc2 ? dot2Enc.bg : dot2Plain.bg;
+      dot2.style.boxShadow  = enc2 ? dot2Enc.sh : dot2Plain.sh;
+      dot2.style.left = x2 + 'px';
 
-      // Light up nearest node
+      // Light up nearest node (either particle)
       nodeIds.forEach(id => {
-        const el = document.getElementById(id);
-        el.classList.remove('lit-plain','lit-claude','lit-relay');
+        document.getElementById(id).classList.remove('lit-plain','lit-claude','lit-relay');
       });
-      let nearest = 0, minDist = Infinity;
-      positions.forEach((px, i) => {
-        const d = Math.abs(x - px);
-        if (d < minDist) { minDist = d; nearest = i; }
+      [x1, x2].forEach(x => {
+        let nearest = 0, minD = Infinity;
+        positions.forEach((px, i) => {
+          const d = Math.abs(x - px);
+          if (d < minD) { minD = d; nearest = i; }
+        });
+        if (minD < 44) {
+          const type = nodeTypes[nearest];
+          const cls = type === 'claude' ? 'lit-claude' : 'lit-plain';
+          document.getElementById(nodeIds[nearest]).classList.add(cls);
+        }
       });
-      if (minDist < 44) {
-        const type = nodeTypes[nearest];
-        const litClass = type === 'relay' ? 'lit-relay' : type === 'claude' ? 'lit-claude' : 'lit-plain';
-        document.getElementById(nodeIds[nearest]).classList.add(litClass);
-      }
 
       requestAnimationFrame(frame);
     }
