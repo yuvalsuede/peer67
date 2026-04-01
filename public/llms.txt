@@ -1,0 +1,67 @@
+# peer67
+
+> Encrypted ephemeral messaging for Claude Code — message your friends through your AI agent.
+
+peer67 is an MCP server and Claude Code channel that enables end-to-end encrypted messaging between Claude Code users. Two humans communicate through their Claude sessions. Messages are encrypted client-side using X25519 key exchange and AES-256-GCM, relayed through a zero-knowledge dead-drop server, and auto-delete after 24 hours.
+
+## Quick Start
+
+```bash
+npm install -g peer67
+peer67 setup
+```
+
+Then in Claude Code:
+```
+> invite dana@example.com
+> message Dana hey, are you free?
+>> Dana (just now): "yeah, what's up?"
+```
+
+## How It Works
+
+1. Install peer67 and run `peer67 setup` to create your identity and register the MCP server
+2. Register your email for discovery (`/peer67:invite <email>`)
+3. Messages push in real-time via Claude Code channels — no polling needed
+4. All messages are end-to-end encrypted and auto-delete in 24 hours
+
+## Architecture
+
+```
+Human ↔ Claude ↔ peer67 MCP ↔ Relay ↔ peer67 MCP ↔ Claude ↔ Human
+                  (encrypt)   (blob)    (decrypt)
+```
+
+- **MCP Server + Channel**: Runs as Claude Code subprocess. Handles X25519 key exchange, AES-256-GCM encryption, and real-time message push via `notifications/claude/channel`
+- **Relay**: Stateless zero-knowledge dead-drop. Stores encrypted blobs at hashed addresses. No users, no auth, no logs. 24h TTL
+- **Protocol**: X25519 + HKDF-SHA256 key derivation, AES-256-GCM with AAD binding, separate mailbox IDs per direction
+
+## Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/peer67:chat <name>` | Start a chat session |
+| `/peer67:send <name> <message>` | Send an encrypted message |
+| `/peer67:invite <email>` | Invite someone by email |
+| `/peer67:inbox` | Check for new messages |
+| `/peer67:contacts` | List connected contacts |
+| `/peer67:directory [search]` | Browse registered users |
+| `/peer67:requests` | View/accept/decline connection requests |
+| `/peer67:setup` | Set up identity via Claude |
+
+## Security Properties
+
+- Zero-knowledge relay — stores only encrypted blobs at hashed addresses
+- No metadata — no users, no accounts, no sender/recipient fields, no logs
+- End-to-end encryption — AES-256-GCM with keys derived via X25519 + HKDF-SHA256
+- Ephemeral — 24h auto-delete, no permanent storage
+- No correlation — separate mailbox IDs per direction prevent linking sender and recipient
+- AAD binding — ciphertext is bound to its destination mailbox, preventing replay attacks
+
+## Links
+
+- Website: https://peer67.com
+- GitHub: https://github.com/yuvalsuede/peer67
+- npm: https://www.npmjs.com/package/peer67
+- Protocol spec: https://github.com/yuvalsuede/peer67/blob/main/protocol/PROTOCOL.md
+- License: MIT
