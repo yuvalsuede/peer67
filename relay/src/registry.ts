@@ -139,15 +139,23 @@ export class RegistryStore {
 
   async directory(search?: string): Promise<Array<{ handle: string; pub: string }>> {
     const hashes = await this.redis.smembers("dir:index");
+    const seen = new Set<string>();
     const results: Array<{ handle: string; pub: string }> = [];
 
     for (const hash of hashes) {
       const raw = await this.redis.get(`dir:${hash}`);
-      if (!raw) continue;
+      if (!raw) {
+        // Stale index entry — clean it up
+        await this.redis.srem("dir:index", hash);
+        continue;
+      }
       const entry = JSON.parse(raw) as DirectoryEntry;
       if (search && !entry.handle.toLowerCase().startsWith(search.toLowerCase())) {
         continue;
       }
+      // Deduplicate by public key (same person, multiple registrations)
+      if (seen.has(entry.pub)) continue;
+      seen.add(entry.pub);
       results.push({ handle: entry.handle, pub: entry.pub });
     }
 
