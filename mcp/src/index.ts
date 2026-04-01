@@ -46,9 +46,9 @@ const store = new LocalStore(storeDir);
 // ── Server ─────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "peer67", version: "0.5.0" },
+  { name: "peer67", version: "0.5.1" },
   {
-    capabilities: { tools: {} },
+    capabilities: { tools: {}, logging: {} },
     instructions: `
 You are helping the user communicate privately via Peer67, an end-to-end encrypted messaging tool.
 
@@ -267,9 +267,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const message = params.message as string;
 
         const result = await sendMessage(store, to, message);
-        return text(
-          `Message sent to ${to}. It will be available until ${new Date(result.expires_at).toLocaleString()}.`
-        );
+        let reply = `Message sent to ${to}.`;
+
+        // Piggyback: check inbox for new messages from all contacts
+        try {
+          const incoming = await checkInbox(store);
+          if (incoming.length > 0) {
+            const formatted = incoming.map((msg) => {
+              const when = timeAgo(new Date(msg.timestamp));
+              return `>> ${msg.from} (${when}): ${msg.body}`;
+            }).join("\n");
+            await acknowledgeMessages(incoming);
+            reply += `\n\n--- New messages ---\n${formatted}`;
+          }
+        } catch {}
+
+        return text(reply);
       }
 
       case "peer67_inbox": {
@@ -316,7 +329,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return `• ${c.display_name} (connected ${since}) — relay: ${c.relay_url}`;
         });
 
-        return text(`Your contacts (${contacts.length}):\n\n${lines.join("\n")}`);
+        let reply = `Your contacts (${contacts.length}):\n\n${lines.join("\n")}`;
+
+        // Piggyback: check inbox for new messages
+        try {
+          const incoming = await checkInbox(store);
+          if (incoming.length > 0) {
+            const formatted = incoming.map((msg) => {
+              const when = timeAgo(new Date(msg.timestamp));
+              return `>> ${msg.from} (${when}): ${msg.body}`;
+            }).join("\n");
+            await acknowledgeMessages(incoming);
+            reply += `\n\n--- New messages ---\n${formatted}`;
+          }
+        } catch {}
+
+        return text(reply);
       }
 
       case "peer67_disconnect": {
@@ -466,7 +494,7 @@ async function notifyMessages(messages: InboxMessage[]): Promise<void> {
     method: "notifications/message",
     params: {
       level: "info",
-      message: `---\n${parts.join("\n\n")}\n---`,
+      data: `---\n${parts.join("\n\n")}\n---`,
     },
   });
 }
@@ -493,7 +521,7 @@ async function pollNonMessageEvents(): Promise<void> {
         method: "notifications/message",
         params: {
           level: "info",
-          message: `Connection with ${completedName} is now complete! You can start messaging them.`,
+          data: `Connection with ${completedName} is now complete! You can start messaging them.`,
         },
       });
     }
@@ -509,7 +537,7 @@ async function pollNonMessageEvents(): Promise<void> {
         method: "notifications/message",
         params: {
           level: "info",
-          message: `---\n>> ${incomingHandle} wants to connect with you.\n>> Say "accept ${incomingHandle}" or "decline ${incomingHandle}"\n---`,
+          data: `---\n>> ${incomingHandle} wants to connect with you.\n>> Say "accept ${incomingHandle}" or "decline ${incomingHandle}"\n---`,
         },
       });
     }
@@ -538,7 +566,7 @@ async function pollNonMessageEvents(): Promise<void> {
             method: "notifications/message",
             params: {
               level: "info",
-              message: `${invite.email} has joined Peer67! Connection initiated automatically.`,
+              data: `${invite.email} has joined Peer67! Connection initiated automatically.`,
             },
           });
         }

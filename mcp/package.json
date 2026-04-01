@@ -1,6 +1,6 @@
 {
   "name": "peer67",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Encrypted ephemeral messaging for Claude Code — message your friends through your AI agent",
   "type": "module",
   "bin": {
