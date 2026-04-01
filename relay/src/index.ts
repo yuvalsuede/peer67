@@ -6,12 +6,15 @@ import { BlobStore } from "./store.js";
 import { RegistryStore } from "./registry.js";
 import { registerRegistryRoutes } from "./registry-routes.js";
 import { isValidMailboxId } from "./middleware.js";
+import { NotifyHub } from "./notify.js";
 
 interface BuildAppOptions {
   redisUrl?: string;
   redis?: Redis;
+  redisSub?: Redis;
   store?: BlobStore;
   registry?: RegistryStore;
+  notifyHub?: NotifyHub;
 }
 
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -28,26 +31,40 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     });
   }
 
-  // Build store — accept pre-built store, pre-built redis, or create from URL
+  // Build store — accept pre-built instances, pre-built redis, or create from URL.
+  // Only create Redis connections if needed (i.e., any of store/registry/notifyHub is missing).
   let store: BlobStore;
   let registryStore: RegistryStore;
+  let notifyHub: NotifyHub;
 
-  if (opts.store !== undefined && opts.registry !== undefined) {
-    store = opts.store;
-    registryStore = opts.registry;
-  } else {
+  const needsRedis =
+    opts.store === undefined ||
+    opts.registry === undefined ||
+    opts.notifyHub === undefined;
+
+  if (needsRedis) {
     let redis: Redis;
+    let redisSub: Redis;
     if (opts.redis !== undefined) {
       redis = opts.redis;
+      redisSub = opts.redisSub ?? opts.redis;
     } else if (opts.redisUrl === "redis://mock") {
       const { default: RedisMock } = await import("ioredis-mock");
       redis = new RedisMock() as unknown as Redis;
+      // ioredis-mock instances share the same in-memory store; create a second instance for sub
+      redisSub = new RedisMock() as unknown as Redis;
     } else {
       const { default: Redis } = await import("ioredis");
       redis = new Redis(opts.redisUrl ?? process.env.REDIS_URL ?? "redis://localhost:6379");
+      redisSub = new Redis(opts.redisUrl ?? process.env.REDIS_URL ?? "redis://localhost:6379");
     }
     store = opts.store ?? new BlobStore(redis);
     registryStore = opts.registry ?? new RegistryStore(redis);
+    notifyHub = opts.notifyHub ?? new NotifyHub(redis, redisSub);
+  } else {
+    store = opts.store;
+    registryStore = opts.registry;
+    notifyHub = opts.notifyHub;
   }
 
   const relayUrl = process.env.RELAY_URL ?? "http://localhost:3967";
@@ -71,6 +88,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
 
     try {
       const result = await store.put(mailboxId, blob);
+      await notifyHub.publish(mailboxId, result.id);
       return reply.status(201).send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Internal error";
@@ -108,6 +126,48 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     }
 
     return reply.status(204).send();
+  });
+
+  // GET /subscribe — SSE push notifications
+  app.get<{
+    Querystring: { mailboxes?: string };
+  }>("/subscribe", async (request, reply) => {
+    const { mailboxes } = request.query;
+    if (!mailboxes) {
+      return reply.status(400).send({ error: "mailboxes parameter required" });
+    }
+
+    const ids = mailboxes.split(",").filter(isValidMailboxId);
+    if (ids.length === 0) {
+      return reply.status(400).send({ error: "No valid mailbox IDs" });
+    }
+
+    // SSE headers
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    reply.raw.write(":ok\n\n");
+
+    // Subscribe to all mailboxes
+    for (const id of ids) {
+      await notifyHub.subscribe(id, reply.raw);
+    }
+
+    // Keepalive every 30s
+    const keepalive = setInterval(() => {
+      try { reply.raw.write(":ping\n\n"); } catch { clearInterval(keepalive); }
+    }, 30_000);
+
+    // Cleanup on disconnect
+    request.raw.on("close", async () => {
+      clearInterval(keepalive);
+      for (const id of ids) {
+        await notifyHub.unsubscribe(id, reply.raw);
+      }
+    });
   });
 
   // GET /health

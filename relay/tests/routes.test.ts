@@ -4,6 +4,8 @@ import RedisMock from "ioredis-mock";
 import type { Redis } from "ioredis";
 import { buildApp } from "../src/index.js";
 import { BlobStore } from "../src/store.js";
+import { RegistryStore } from "../src/registry.js";
+import { NotifyHub } from "../src/notify.js";
 
 const VALID_MAILBOX_ID = "a".repeat(64);
 const VALID_BLOB = Buffer.from("hello world").toString("base64");
@@ -15,7 +17,11 @@ const mockRedis = new RedisMock() as unknown as Redis;
 beforeEach(async () => {
   await (mockRedis as unknown as { flushall(): Promise<void> }).flushall();
   const store = new BlobStore(mockRedis);
-  app = await buildApp({ store });
+  const registry = new RegistryStore(mockRedis);
+  const pub = new RedisMock() as unknown as Redis;
+  const sub = new RedisMock() as unknown as Redis;
+  const notifyHub = new NotifyHub(pub, sub);
+  app = await buildApp({ store, registry, notifyHub });
   await app.ready();
 });
 
