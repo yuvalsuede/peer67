@@ -334,6 +334,25 @@
       border-radius: 3px;
     }
 
+    /* ── Docs ── */
+    .docs-section { padding: 4rem 0; }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+    }
+    .doc-block {}
+    .doc-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem; letter-spacing: .18em;
+      text-transform: uppercase;
+      color: #d4a574; margin-bottom: .75rem;
+    }
+
+    @media (max-width: 680px) {
+      .docs-grid { grid-template-columns: 1fr; }
+    }
+
     /* ── Footer ── */
     footer { padding: 4rem 0 3rem; text-align: center; }
     .footer-brand {
@@ -467,6 +486,61 @@
             <li><code>/peer67:contacts</code> &middot; <code>/peer67:inbox</code></li>
           </ul>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="docs-section">
+    <div class="wrap">
+      <p class="section-label">D O C U M E N T A T I O N</p>
+      <div class="docs-grid">
+        <div class="doc-block">
+          <p class="doc-title">Setup</p>
+          <div class="code-block" style="font-size:.85rem;line-height:1.9">
+            <span class="dim">$</span> npm install -g peer67<br>
+            <span class="dim">$</span> peer67 setup<br>
+            <span class="dim">#</span> <span class="dim">asks for name + email, registers MCP server</span><br>
+            <br>
+            <span class="dim"># Real-time mode (channels preview)</span><br>
+            <span class="dim">$</span> claude --dangerously-load-development-channels server:peer67
+          </div>
+        </div>
+        <div class="doc-block">
+          <p class="doc-title">Connect</p>
+          <div class="code-block" style="font-size:.85rem;line-height:1.9">
+            <span class="dim"># By email (auto-connects if registered)</span><br>
+            <span class="dim">&gt;</span> <span style="color:#f0f0f0">/peer67:invite dana@example.com</span><br>
+            <br>
+            <span class="dim"># By connection code (manual)</span><br>
+            <span class="dim">$</span> peer67 connect Dana<br>
+            <span class="dim">#</span> <span class="dim">share the p67_... code out-of-band</span><br>
+            <span class="dim">$</span> peer67 accept Dana &lt;code&gt;
+          </div>
+        </div>
+        <div class="doc-block">
+          <p class="doc-title">Chat</p>
+          <div class="code-block" style="font-size:.85rem;line-height:1.9">
+            <span class="dim">&gt;</span> <span style="color:#f0f0f0">/peer67:chat Dana</span><br>
+            <span class="dim">&gt;</span> <span style="color:#f0f0f0">hey, the deck is ready</span><br>
+            <span style="color:#aaa">  Sent.</span><br>
+            <span style="color:#00d4aa">&gt;&gt; Dana (2s ago): "on it!"</span><br>
+            <span class="dim">&gt;</span> <span style="color:#f0f0f0">great, ping me when done</span><br>
+            <span style="color:#aaa">  Sent.</span>
+          </div>
+        </div>
+        <div class="doc-block">
+          <p class="doc-title">All Commands</p>
+          <div class="code-block" style="font-size:.82rem;line-height:1.9">
+            <span style="color:#d4a574">/peer67:chat</span> &lt;name&gt; &mdash; live chat session<br>
+            <span style="color:#d4a574">/peer67:send</span> &lt;name&gt; &lt;msg&gt; &mdash; send once<br>
+            <span style="color:#d4a574">/peer67:inbox</span> &mdash; check messages<br>
+            <span style="color:#d4a574">/peer67:invite</span> &lt;email&gt; &mdash; invite by email<br>
+            <span style="color:#d4a574">/peer67:contacts</span> &mdash; list contacts<br>
+            <span style="color:#d4a574">/peer67:directory</span> &mdash; browse users<br>
+            <span style="color:#d4a574">/peer67:requests</span> &mdash; pending requests<br>
+            <span style="color:#d4a574">/peer67:setup</span> &mdash; identity setup
+          </div>
+        </div>
       </div>
     </div>
   </section>
