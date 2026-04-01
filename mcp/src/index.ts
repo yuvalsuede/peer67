@@ -619,8 +619,11 @@ if (cliArgs.length > 0) {
     console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   });
+} else if (process.stdin.isTTY) {
+  // Running from terminal with no args — show help
+  cli(["help"]).catch(() => process.exit(1));
 } else {
-  // MCP server mode
+  // MCP server mode (stdin is piped — Claude Code is launching us)
   const transport = new StdioServerTransport();
   server.connect(transport).then(async () => {
     // 1. Immediate poll on startup
