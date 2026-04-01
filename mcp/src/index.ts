@@ -46,17 +46,23 @@ const store = new LocalStore(storeDir);
 // ── Server ─────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "peer67", version: "0.5.1" },
+  { name: "peer67", version: "0.6.0" },
   {
-    capabilities: { tools: {}, logging: {} },
+    capabilities: {
+      tools: {},
+      logging: {},
+      experimental: { "claude/channel": {} },
+    },
     instructions: `
 You are helping the user communicate privately via Peer67, an end-to-end encrypted messaging tool.
 
+Messages from contacts arrive in real-time as <channel source="peer67" from="ContactName"> tags.
+When you see one, show it immediately with >> prefix format and respond naturally.
+
 MESSAGE HANDLING:
-- When the user says "tell X ..." or "message X ...", SEND IT immediately. No drafts, no confirmation.
-- IMPORTANT: Call peer67_inbox at the START of every user turn to check for new messages. Show any new messages immediately with >> prefix before responding.
-- peer67_send also returns new incoming messages — always show them.
-- After showing an incoming message, the user will reply naturally if they want to. If their next message looks like a reply, send it to that sender.
+- When the user says "tell X ..." or "message X ...", SEND IT immediately using peer67_send. No drafts, no confirmation.
+- Incoming messages push automatically via channel — no need to poll.
+- After showing an incoming message, the user will reply naturally. If their next message looks like a reply, send it to that sender.
 - Group multiple messages from the same sender.
 
 FORMATTING:
@@ -462,11 +468,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 let sseSubscription: ReturnType<RelayClient["subscribe"]> | null = null;
 
 async function refreshSseMailboxes(): Promise<void> {
-  if (!sseSubscription) return;
   const data = await store.load();
   const ids = Object.values(data.connections).map(c => c.mailbox_recv);
-  if (ids.length > 0) {
+  if (ids.length === 0) return;
+
+  if (sseSubscription) {
     sseSubscription.updateMailboxes(ids);
+  } else {
+    // Create SSE subscription if it didn't exist at startup (no connections then)
+    const config = await store.getConfig();
+    const relayUrl = process.env.PEER67_RELAY ?? config.default_relay;
+    const relay = new RelayClient(relayUrl);
+    sseSubscription = relay.subscribe(
+      ids,
+      async () => {
+        try { await pollMessages(); } catch {}
+        try { await pollNonMessageEvents(); } catch {}
+      },
+      () => { /* SSE error — fallback poll handled by slow interval */ },
+      () => { /* SSE connected */ },
+    );
   }
 }
 
@@ -475,34 +496,22 @@ type InboxMessage = Awaited<ReturnType<typeof checkInbox>>[number];
 async function notifyMessages(messages: InboxMessage[]): Promise<void> {
   if (messages.length === 0) return;
 
-  const grouped: Record<string, typeof messages> = {};
-  for (const m of messages) {
-    if (!grouped[m.from]) grouped[m.from] = [];
-    grouped[m.from].push(m);
-  }
-
-  const parts: string[] = [];
-  for (const [sender, msgs] of Object.entries(grouped)) {
-    for (const m of msgs) {
-      const ago = timeAgo(new Date(m.timestamp));
-      parts.push(`>> ${sender}  (${ago})\n>> ${m.body}`);
-    }
+  for (const msg of messages) {
+    const ago = timeAgo(new Date(msg.timestamp));
+    await server.notification({
+      method: "notifications/claude/channel",
+      params: {
+        content: msg.body,
+        meta: { from: msg.from, time: ago },
+      },
+    });
   }
 
   await acknowledgeMessages(messages);
-
-  await server.notification({
-    method: "notifications/message",
-    params: {
-      level: "info",
-      data: `---\n${parts.join("\n\n")}\n---`,
-    },
-  });
 }
 
 async function pollMessages(): Promise<void> {
   try {
-    // Check for new messages and push them instantly
     const messages = await checkInbox(store);
     await notifyMessages(messages);
   } catch {
@@ -519,10 +528,9 @@ async function pollNonMessageEvents(): Promise<void> {
     if (completedName) {
       connectionChanged = true;
       await server.notification({
-        method: "notifications/message",
+        method: "notifications/claude/channel",
         params: {
-          level: "info",
-          data: `Connection with ${completedName} is now complete! You can start messaging them.`,
+          content: `Connection with ${completedName} is now complete! You can start messaging them.`,
         },
       });
     }
@@ -535,10 +543,9 @@ async function pollNonMessageEvents(): Promise<void> {
     const incomingHandle = await checkConnectInbox(store);
     if (incomingHandle) {
       await server.notification({
-        method: "notifications/message",
+        method: "notifications/claude/channel",
         params: {
-          level: "info",
-          data: `---\n>> ${incomingHandle} wants to connect with you.\n>> Say "accept ${incomingHandle}" or "decline ${incomingHandle}"\n---`,
+          content: `---\n>> ${incomingHandle} wants to connect with you.\n>> Say "accept ${incomingHandle}" or "decline ${incomingHandle}"\n---`,
         },
       });
     }
@@ -564,10 +571,10 @@ async function pollNonMessageEvents(): Promise<void> {
           connectionChanged = true;
 
           await server.notification({
-            method: "notifications/message",
+            method: "notifications/claude/channel",
             params: {
-              level: "info",
-              data: `${invite.email} has joined Peer67! Connection initiated automatically.`,
+              content: `${invite.email} has joined Peer67! Connection initiated automatically.`,
+              meta: { type: "system" },
             },
           });
         }
@@ -772,7 +779,7 @@ if (cliArgs.length > 0) {
       sseSubscription = relay.subscribe(
         allMailboxIds,
         async () => {
-          // New blob arrived — check messages AND connection events
+          // New blob arrived — check messages and connection events
           try { await pollMessages(); } catch {}
           try { await pollNonMessageEvents(); } catch {}
         },
