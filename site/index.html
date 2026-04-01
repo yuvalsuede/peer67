@@ -581,8 +581,8 @@
     const dot2 = document.getElementById('particle2');
     const nodeIds  = ['pn0','pn1','pn3','pn4'];
     const nodeTypes = ['human','claude','claude','human'];
-    const LOOP = 3200; // ms per full traversal
-    const OFFSET = 0.5; // dot2 starts halfway offset
+    const LEG = 2600; // ms per one direction
+    const FULL = LEG * 2; // full round trip
 
     function cx(id) {
       const pr = pipeline.getBoundingClientRect();
@@ -590,50 +590,49 @@
       return (nr.left + nr.width / 2) - pr.left;
     }
 
-    // Colors: dot1 = white→green (You→Friend), dot2 = amber→green (Friend→You)
-    const dot1Plain = { bg: '#f0f0f0', sh: '0 0 14px 5px rgba(240,240,240,.65)' };
-    const dot1Enc   = { bg: '#00d4aa', sh: '0 0 14px 5px rgba(0,212,170,.6)' };
-    const dot2Plain = { bg: '#d4a574', sh: '0 0 14px 5px rgba(212,165,116,.65)' };
-    const dot2Enc   = { bg: '#00d4aa', sh: '0 0 14px 5px rgba(0,212,170,.5)' };
-
     let t0 = null;
     function frame(ts) {
       if (!t0) t0 = ts;
       const positions = nodeIds.map(id => cx(id));
       const totalDist = positions[3] - positions[0];
+      const elapsed = (ts - t0) % FULL;
+      const goingRight = elapsed < LEG;
 
-      // Dot 1: left → right (You → Friend)
-      const p1 = ((ts - t0) % LOOP) / LOOP;
-      const x1 = positions[0] + totalDist * p1;
-      const enc1 = x1 > positions[1] && x1 < positions[2];
-      dot1.style.background = enc1 ? dot1Enc.bg : dot1Plain.bg;
-      dot1.style.boxShadow  = enc1 ? dot1Enc.sh : dot1Plain.sh;
-      dot1.style.left = x1 + 'px';
+      // First half: dot1 goes left→right, dot2 hidden
+      // Second half: dot2 goes right→left, dot1 hidden
+      const activeDot  = goingRight ? dot1 : dot2;
+      const hiddenDot  = goingRight ? dot2 : dot1;
+      const progress   = goingRight ? elapsed / LEG : (elapsed - LEG) / LEG;
+      const x = goingRight
+        ? positions[0] + totalDist * progress
+        : positions[3] - totalDist * progress;
 
-      // Dot 2: right → left (Friend → You), offset by half cycle
-      const p2 = ((ts - t0 + LOOP * OFFSET) % LOOP) / LOOP;
-      const x2 = positions[3] - totalDist * p2;
-      const enc2 = x2 > positions[1] && x2 < positions[2];
-      dot2.style.background = enc2 ? dot2Enc.bg : dot2Plain.bg;
-      dot2.style.boxShadow  = enc2 ? dot2Enc.sh : dot2Plain.sh;
-      dot2.style.left = x2 + 'px';
+      hiddenDot.style.left = '-100px';
 
-      // Light up nearest node (either particle)
+      const enc = x > positions[1] && x < positions[2];
+      if (goingRight) {
+        activeDot.style.background = enc ? '#00d4aa' : '#f0f0f0';
+        activeDot.style.boxShadow  = enc ? '0 0 14px 5px rgba(0,212,170,.6)' : '0 0 14px 5px rgba(240,240,240,.65)';
+      } else {
+        activeDot.style.background = enc ? '#00d4aa' : '#d4a574';
+        activeDot.style.boxShadow  = enc ? '0 0 14px 5px rgba(0,212,170,.5)' : '0 0 14px 5px rgba(212,165,116,.65)';
+      }
+      activeDot.style.left = x + 'px';
+
+      // Light up nearest node
       nodeIds.forEach(id => {
         document.getElementById(id).classList.remove('lit-plain','lit-claude','lit-relay');
       });
-      [x1, x2].forEach(x => {
-        let nearest = 0, minD = Infinity;
-        positions.forEach((px, i) => {
-          const d = Math.abs(x - px);
-          if (d < minD) { minD = d; nearest = i; }
-        });
-        if (minD < 44) {
-          const type = nodeTypes[nearest];
-          const cls = type === 'claude' ? 'lit-claude' : 'lit-plain';
-          document.getElementById(nodeIds[nearest]).classList.add(cls);
-        }
+      let nearest = 0, minD = Infinity;
+      positions.forEach((px, i) => {
+        const d = Math.abs(x - px);
+        if (d < minD) { minD = d; nearest = i; }
       });
+      if (minD < 44) {
+        const type = nodeTypes[nearest];
+        const cls = type === 'claude' ? 'lit-claude' : 'lit-plain';
+        document.getElementById(nodeIds[nearest]).classList.add(cls);
+      }
 
       requestAnimationFrame(frame);
     }
