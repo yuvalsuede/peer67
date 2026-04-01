@@ -46,7 +46,7 @@ const store = new LocalStore(storeDir);
 // ── Server ─────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "peer67", version: "1.0.0" },
+  { name: "peer67", version: "0.5.0" },
   {
     capabilities: { tools: {} },
     instructions: `
@@ -252,6 +252,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return text("A connection code is required for action='accept'. Please provide the 'code' parameter.");
           }
           const result = await connectAccept(store, contactName, code);
+          try { await refreshSseMailboxes(); } catch {}
           return text(
             result.message +
               `\nOnce ${contactName} completes their side, you'll be able to exchange messages.`
@@ -394,6 +395,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (action === "accept") {
           if (!from) return text("Provide the 'from' handle to accept.");
           const result = await acceptRequest(store, from);
+          try { await refreshSseMailboxes(); } catch {}
           return text(result.message);
         }
 
@@ -426,6 +428,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // ── Background polling ─────────────────────────────────────────────────────
+
+// Mutable ref so poll callbacks can update SSE after new connections
+let sseSubscription: ReturnType<RelayClient["subscribe"]> | null = null;
+
+async function refreshSseMailboxes(): Promise<void> {
+  if (!sseSubscription) return;
+  const data = await store.load();
+  const ids = Object.values(data.connections).map(c => c.mailbox_recv);
+  if (ids.length > 0) {
+    sseSubscription.updateMailboxes(ids);
+  }
+}
 
 type InboxMessage = Awaited<ReturnType<typeof checkInbox>>[number];
 
@@ -468,10 +482,13 @@ async function pollMessages(): Promise<void> {
 }
 
 async function pollNonMessageEvents(): Promise<void> {
+  let connectionChanged = false;
+
   try {
     // 1. Check if any pending outbound connection handshakes are complete
     const completedName = await connectComplete(store);
     if (completedName) {
+      connectionChanged = true;
       await server.notification({
         method: "notifications/message",
         params: {
@@ -515,6 +532,7 @@ async function pollNonMessageEvents(): Promise<void> {
         if (lookup?.found && lookup.pub) {
           await connectAutoInitiate(store, invite.email, lookup.pub, relayUrl);
           await store.removePendingInvite(invite.email_hash);
+          connectionChanged = true;
 
           await server.notification({
             method: "notifications/message",
@@ -530,6 +548,11 @@ async function pollNonMessageEvents(): Promise<void> {
     }
   } catch {
     // Polling errors are silent
+  }
+
+  // Refresh SSE subscription when connections change so new mailboxes get real-time push
+  if (connectionChanged) {
+    try { await refreshSseMailboxes(); } catch {}
   }
 }
 
@@ -685,22 +708,44 @@ if (cliArgs.length > 0) {
     await pollMessages();
     await pollNonMessageEvents();
 
-    // 2. Start SSE for real-time messages
+    // 2. Start SSE for real-time messages + handshake events
     const data = await store.load();
     const config = await store.getConfig();
     const relayUrl = process.env.PEER67_RELAY ?? config.default_relay;
     const relay = new RelayClient(relayUrl);
-    const mailboxIds = Object.values(data.connections).map(c => c.mailbox_recv);
+
+    // Collect all mailboxes we care about: recv mailboxes + rendezvous + connect-inbox
+    const recvMailboxIds = Object.values(data.connections).map(c => c.mailbox_recv);
+    const extraMailboxIds: string[] = [];
+
+    // If there's a pending outbound connection, subscribe to its rendezvous mailbox
+    if (data.pending) {
+      const { createHash } = await import("node:crypto");
+      const ourPubBytes = Buffer.from(data.pending.public_key, "hex");
+      extraMailboxIds.push(createHash("sha256").update(ourPubBytes).digest("hex"));
+    }
+
+    // Subscribe to our connect-inbox for incoming auto-connect requests
+    if (data.identity.identity_key_public) {
+      const { createHash } = await import("node:crypto");
+      extraMailboxIds.push(
+        createHash("sha256")
+          .update("peer67-connect-inbox:" + data.identity.identity_key_public)
+          .digest("hex")
+      );
+    }
+
+    const allMailboxIds = [...recvMailboxIds, ...extraMailboxIds];
 
     let fallbackPoll: ReturnType<typeof setInterval> | null = null;
-    let sseSub: ReturnType<typeof relay.subscribe> | null = null;
 
-    if (mailboxIds.length > 0) {
-      sseSub = relay.subscribe(
-        mailboxIds,
+    if (allMailboxIds.length > 0) {
+      sseSubscription = relay.subscribe(
+        allMailboxIds,
         async () => {
-          // New blob arrived — check messages
+          // New blob arrived — check messages AND connection events
           try { await pollMessages(); } catch {}
+          try { await pollNonMessageEvents(); } catch {}
         },
         () => {
           // SSE error — start fallback polling
@@ -720,13 +765,13 @@ if (cliArgs.length > 0) {
       );
     }
 
-    // 3. Slow poll for non-message events (30s)
+    // 3. Slow poll for non-message events (10s for snappier handshakes)
     const slowPoll = setInterval(async () => {
       try { await pollNonMessageEvents(); } catch {}
-    }, 30_000);
+    }, 10_000);
 
     process.on("SIGINT", () => {
-      sseSub?.stop();
+      sseSubscription?.stop();
       clearInterval(slowPoll);
       if (fallbackPoll) clearInterval(fallbackPoll);
       process.exit(0);
