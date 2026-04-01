@@ -62,9 +62,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     registryStore = opts.registry ?? new RegistryStore(redis);
     notifyHub = opts.notifyHub ?? new NotifyHub(redis, redisSub);
   } else {
-    store = opts.store;
-    registryStore = opts.registry;
-    notifyHub = opts.notifyHub;
+    store = opts.store!;
+    registryStore = opts.registry!;
+    notifyHub = opts.notifyHub!;
   }
 
   const relayUrl = process.env.RELAY_URL ?? "http://localhost:3967";
