@@ -37,7 +37,10 @@ function timeAgo(date: Date): string {
 
 // ── Store setup ────────────────────────────────────────────────────────────
 
-const storeDir = process.env.PEER67_DIR ?? join(homedir(), ".peer67");
+// --profile flag overrides the store directory for CLI commands
+const profileArg = process.argv.find((a, i) => process.argv[i - 1] === "--profile");
+const storeDir = process.env.PEER67_DIR
+  ?? (profileArg ? join(homedir(), `.peer67-${profileArg.toLowerCase().replace(/[^a-z0-9-]/g, "")}`) : join(homedir(), ".peer67"));
 const store = new LocalStore(storeDir);
 
 // ── Server ─────────────────────────────────────────────────────────────────
@@ -606,7 +609,12 @@ async function cli(args: string[]): Promise<void> {
       console.log("  peer67 inbox [name]             Check messages");
       console.log("  peer67 contacts                 List connections");
       console.log("  peer67 status                   Show identity & connections");
-      console.log("\nAs MCP server (no args):  runs as Claude Code MCP subprocess");
+      console.log("\nOptions:");
+      console.log("  --profile <name>                Use a separate identity (e.g. --profile dana)");
+      console.log("\nExamples:");
+      console.log("  peer67 setup                    Set up default profile");
+      console.log("  peer67 setup --profile dana     Set up a second identity");
+      console.log("  peer67 send dana hello --profile work");
   }
 }
 

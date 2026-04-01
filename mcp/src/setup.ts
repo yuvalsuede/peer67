@@ -4,8 +4,24 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { LocalStore } from "./store.js";
 
-const PEER67_DIR = process.env.PEER67_DIR ?? join(homedir(), ".peer67");
-const MCP_SERVER_KEY = "peer67";
+function resolveProfile(): { dir: string; mcpKey: string; profile: string | null } {
+  const profileArg = process.argv.find((a, i) => process.argv[i - 1] === "--profile");
+  if (profileArg) {
+    const name = profileArg.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    return {
+      dir: process.env.PEER67_DIR ?? join(homedir(), `.peer67-${name}`),
+      mcpKey: `peer67-${name}`,
+      profile: name,
+    };
+  }
+  return {
+    dir: process.env.PEER67_DIR ?? join(homedir(), ".peer67"),
+    mcpKey: "peer67",
+    profile: null,
+  };
+}
+
+const { dir: PEER67_DIR, mcpKey: MCP_SERVER_KEY, profile: PROFILE } = resolveProfile();
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -58,9 +74,14 @@ function registerMcpServer(): { alreadyRegistered: boolean; path: string } {
   }
 
   // Use absolute paths resolved at setup time — Claude Code may not have nvm in PATH
-  const nodePath = process.execPath; // absolute path to current node binary
-  const scriptPath = new URL("./index.js", import.meta.url).pathname; // absolute path to MCP entry
-  const entry = { command: nodePath, args: [scriptPath] };
+  const nodePath = process.execPath;
+  const scriptPath = new URL("./index.js", import.meta.url).pathname;
+  const entry: Record<string, unknown> = { command: nodePath, args: [scriptPath] };
+
+  // For profiles, set PEER67_DIR so the MCP server uses the right store
+  if (PROFILE) {
+    entry.env = { PEER67_DIR };
+  }
 
   const updated = {
     ...settings,
@@ -84,7 +105,11 @@ async function checkRelay(relayUrl: string): Promise<boolean> {
 }
 
 export async function setup(): Promise<void> {
-  process.stdout.write("\n  peer67 — encrypted ephemeral messaging\n\n");
+  process.stdout.write("\n  peer67 — encrypted ephemeral messaging\n");
+  if (PROFILE) {
+    process.stdout.write(`  Profile: ${PROFILE}\n`);
+  }
+  process.stdout.write("\n");
 
   // Step 1: Get name
   const nameArg = process.argv.find((a, i) => process.argv[i - 1] === "--name");
@@ -141,5 +166,11 @@ export async function setup(): Promise<void> {
     process.stdout.write(`  \x1b[33m!\x1b[0m Relay not reachable (messaging works when it's back)\n`);
   }
 
-  process.stdout.write('\n  Ready! Open Claude Code and say "connect me with someone"\n\n');
+  if (PROFILE) {
+    process.stdout.write(`\n  Ready! Open Claude Code — the "${PROFILE}" profile is available.\n`);
+    process.stdout.write(`  Store: ${PEER67_DIR}\n`);
+    process.stdout.write(`  MCP server: ${MCP_SERVER_KEY}\n\n`);
+  } else {
+    process.stdout.write('\n  Ready! Open Claude Code and say "connect me with someone"\n\n');
+  }
 }
