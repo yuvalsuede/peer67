@@ -46,7 +46,7 @@ const store = new LocalStore(storeDir);
 // ── Server ─────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "peer67", version: "0.6.0" },
+  { name: "peer67", version: "0.6.1" },
   {
     capabilities: {
       tools: {},
