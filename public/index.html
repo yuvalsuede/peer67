@@ -23,6 +23,26 @@
     }
     .wrap { max-width: 740px; margin: 0 auto; padding: 0 2rem; }
 
+    /* ── Top bar ── */
+    .topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .75rem 2rem;
+      background: rgba(13,13,13,.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid #1a1a1a;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+    }
+    .topbar-brand { color: #f0f0f0; text-decoration: none; font-weight: 500; }
+    .topbar-links { display: flex; gap: 1.5rem; }
+    .topbar-links a {
+      color: #888; text-decoration: none;
+      transition: color .15s;
+    }
+    .topbar-links a:hover { color: #f0f0f0; }
+
     /* ── Hero ── */
     .hero { padding: 8rem 2rem 2.5rem; text-align: center; }
     .hero h1 {
@@ -36,7 +56,7 @@
     .hero-sub {
       margin-top: 1.5rem;
       font-size: clamp(1.2rem, 3vw, 1.8rem);
-      color: #d4a574;
+      color: #f0f0f0;
       font-weight: 300;
       line-height: 1.4;
     }
@@ -60,8 +80,8 @@
       content:attr(data-text); position:absolute; inset:0;
       font:inherit; color:#f0f0f0; opacity:0;
     }
-    .glitch.run::before { opacity:1; animation:gc1 .45s steps(1) .15s 1 forwards; }
-    .glitch.run::after  { opacity:1; animation:gc2 .45s steps(1) .15s 1 forwards; }
+    .glitch.run::before { opacity:1; animation:gc1 .45s steps(1) .15s infinite; }
+    .glitch.run::after  { opacity:1; animation:gc2 .45s steps(1) .15s infinite; }
 
     /* ── Tagline strip ── */
     .tagline {
@@ -300,9 +320,17 @@
 </head>
 <body>
 
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">peer67</a>
+    <div class="topbar-links">
+      <a href="https://github.com/yuvalsuede/peer67/blob/main/protocol/PROTOCOL.md" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/yuvalsuede/peer67" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
+
   <section class="hero">
     <h1><span class="glitch" data-text="peer67" id="gtitle">peer67</span></h1>
-    <p class="hero-sub">message your friends through your AI agent</p>
+    <p class="hero-sub">message your friends through <span style="color:#d4a574">Claude</span></p>
   </section>
 
   <div class="tagline">
@@ -316,8 +344,6 @@
         <div class="pipe-track"            id="pt0"><div class="pipe-track-line"></div></div>
         <div class="pipe-node claude-node" id="pn1">Claude</div>
         <div class="pipe-track enc"        id="pt1"><div class="pipe-track-line"></div></div>
-        <div class="pipe-node relay"       id="pn2">relay</div>
-        <div class="pipe-track enc"        id="pt2"><div class="pipe-track-line"></div></div>
         <div class="pipe-node claude-node" id="pn3">Claude</div>
         <div class="pipe-track"            id="pt3"><div class="pipe-track-line"></div></div>
         <div class="pipe-node human"       id="pn4">Friend</div>
@@ -422,9 +448,9 @@
     // ── Particle animation ────────────────────────────────────────────────
     const pipeline = document.getElementById('pipeline');
     const dot      = document.getElementById('particle');
-    const nodeIds  = ['pn0','pn1','pn2','pn3','pn4'];
+    const nodeIds  = ['pn0','pn1','pn3','pn4'];
     // node types: 0=human, 1=claude, 2=relay, 3=claude, 4=human
-    const nodeTypes = ['human','claude','relay','claude','human'];
+    const nodeTypes = ['human','claude','claude','human'];
     const LOOP = 2600; // ms per full traversal
 
     function cx(id) {
@@ -439,19 +465,15 @@
       const progress = ((ts - t0) % LOOP) / LOOP; // 0..1 linear
 
       const positions = nodeIds.map(id => cx(id));
-      const totalDist = positions[4] - positions[0];
+      const totalDist = positions[3] - positions[0];
       const x = positions[0] + totalDist * progress;
 
-      // Zone detection
-      const inEncZone  = x > positions[1] && x < positions[3];
-      const nearRelay  = Math.abs(x - positions[2]) < 30;
-      const nearClaude = (Math.abs(x - positions[1]) < 30 || Math.abs(x - positions[3]) < 30);
+      // Zone detection: encrypted between the two Claude nodes
+      const inEncZone = x > positions[1] && x < positions[2];
+      const nearClaude = (Math.abs(x - positions[1]) < 30 || Math.abs(x - positions[2]) < 30);
 
       // Particle color
-      if (nearRelay) {
-        dot.style.background   = '#00d4aa';
-        dot.style.boxShadow    = '0 0 16px 6px rgba(0,212,170,.75)';
-      } else if (inEncZone) {
+      if (inEncZone) {
         dot.style.background   = '#00d4aa';
         dot.style.boxShadow    = '0 0 14px 5px rgba(0,212,170,.6)';
       } else {
